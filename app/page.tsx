@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { BreakingBanner } from "@/components/home/BreakingBanner";
+import { OpinionRail } from "@/components/home/OpinionRail";
 import { HeroLead } from "@/components/home/HeroLead";
 import { LatestFeed } from "@/components/home/LatestFeed";
 import { ManagerMic } from "@/components/home/ManagerMic";
@@ -24,6 +26,9 @@ export default function HomePage() {
             <ManagerMic />
           </aside>
         </div>
+        <Suspense fallback={null}>
+          <OpinionRail />
+        </Suspense>
         <WeeklyRecapRail />
         <PowerRankingsStrip />
       </div>

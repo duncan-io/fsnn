@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: fantasy
+      POSTGRES_PASSWORD: fantasy
+      POSTGRES_DB: fantasy_newsroom
+    ports:
+      - "5432:5432"
+    volumes:
+      - fantasy_newsroom_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fantasy -d fantasy_newsroom"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  fantasy_newsroom_pg:

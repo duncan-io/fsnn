@@ -6,7 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "bun test",
+    "db:up": "docker compose up -d",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "yahoo:auth": "bun scripts/yahoo-auth.ts",
+    "yahoo:sync": "bun scripts/yahoo-sync.ts",
+    "recap": "bun scripts/weekly-recap.ts",
+    "yahoo:get": "bun scripts/yahoo-get.ts",
+    "opinion:write": "bun scripts/write-opinion.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",

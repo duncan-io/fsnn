@@ -9,6 +9,9 @@ import {
   trendingSlugs,
 } from "@/lib/data/fixtures";
 
+export { getStoredRecap, getWeeklyRecaps } from "@/lib/data/recaps";
+export type { StoredRecap, WeeklyRecapPackage } from "@/lib/data/recaps";
+
 /**
  * Newsroom data access. These functions return fixtures today.
  * When the FSNN API is ready, replace the bodies with fetch calls
@@ -88,6 +91,15 @@ export async function getTrending(): Promise<Article[]> {
   cacheLife("minutes");
   cacheTag("articles");
   return articlesBySlugs(trendingSlugs);
+}
+
+export async function getFixtureArticle(slug: string): Promise<{ article: Article; teams: Team[] } | null> {
+  "use cache";
+  cacheLife("minutes");
+  cacheTag("articles");
+  const article = articles.find((item) => item.slug === slug);
+  if (!article) return null;
+  return { article, teams };
 }
 
 export async function getFeaturedInterview(): Promise<Article | null> {
