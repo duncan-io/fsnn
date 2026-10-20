@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { getWeeklyRecaps } from "@/lib/data";
 import { pageWidth } from "@/lib/labels";
 import { ArticleCard } from "@/components/ui/ArticleCard";
@@ -9,7 +10,25 @@ export const metadata: Metadata = {
   description: "Weekly league recaps from the FSNN newsroom.",
 };
 
-export default async function RecapsPage() {
+export default function RecapsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className={`${pageWidth} py-8`}>
+          <p className="font-display text-xs font-bold uppercase tracking-[0.16em] text-accent">
+            Week in Review
+          </p>
+          <h1 className="mt-2 font-display text-4xl font-extrabold tracking-tight">Recaps</h1>
+          <p className="mt-6 max-w-xl text-muted">Opening the week…</p>
+        </main>
+      }
+    >
+      <RecapsContent />
+    </Suspense>
+  );
+}
+
+async function RecapsContent() {
   const packages = await getWeeklyRecaps();
 
   return (

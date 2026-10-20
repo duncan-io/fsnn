@@ -1,4 +1,4 @@
-import { cacheLife, cacheTag } from "next/cache";
+import { cacheLife, cacheTag, io } from "next/cache";
 import { desc, eq } from "drizzle-orm";
 import type { Article, Team } from "@/lib/types";
 import { getDb } from "@/src/db/client";
@@ -29,6 +29,20 @@ export type StoredRecap = {
 type ArticleRow = typeof articles.$inferSelect;
 
 export async function getWeeklyRecaps(): Promise<WeeklyRecapPackage[]> {
+  if (!process.env.DATABASE_URL) return [];
+  // `postgres.railway.internal` only resolves on the Railway private network.
+  // A production build runs outside that network, so the query has to wait
+  // until a request, inside a Suspense boundary.
+  await io();
+  try {
+    return await readWeeklyRecaps();
+  } catch (error) {
+    if (isUnreachableDatabase(error)) return [];
+    throw error;
+  }
+}
+
+async function readWeeklyRecaps(): Promise<WeeklyRecapPackage[]> {
   "use cache";
   cacheLife("minutes");
   cacheTag("recaps");
@@ -61,10 +75,20 @@ export async function getWeeklyRecaps(): Promise<WeeklyRecapPackage[]> {
 }
 
 export async function getStoredRecap(slug: string): Promise<StoredRecap | null> {
+  if (!process.env.DATABASE_URL) return null;
+  await io();
+  try {
+    return await readStoredRecap(slug);
+  } catch (error) {
+    if (isUnreachableDatabase(error)) return null;
+    throw error;
+  }
+}
+
+async function readStoredRecap(slug: string): Promise<StoredRecap | null> {
   "use cache";
   cacheLife("minutes");
   cacheTag("recaps");
-  if (!process.env.DATABASE_URL) return null;
   const db = getDb();
   const [row] = await db.select().from(articles).where(eq(articles.slug, slug)).limit(1);
   if (!row) return null;
@@ -87,6 +111,29 @@ async function selectArticles(): Promise<ArticleRow[]> {
   if (!process.env.DATABASE_URL) return [];
   const db = getDb();
   return db.select().from(articles).orderBy(desc(articles.week));
+}
+
+const unreachableCodes = new Set([
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ETIMEDOUT",
+]);
+
+function isUnreachableDatabase(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    if ("code" in current && typeof current.code === "string" && unreachableCodes.has(current.code)) {
+      return true;
+    }
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return false;
 }
 
 function toArticle(row: ArticleRow, body?: RecapBody | null): Article {

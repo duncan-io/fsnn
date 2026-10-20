@@ -1,8 +1,26 @@
+import { Suspense } from "react";
 import { getWeeklyRecaps } from "@/lib/data";
 import { ArticleCard } from "@/components/ui/ArticleCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 
-export async function WeeklyRecapRail() {
+export function WeeklyRecapRail() {
+  return (
+    <Suspense fallback={<RecapRailFallback />}>
+      <WeeklyRecapContent />
+    </Suspense>
+  );
+}
+
+function RecapRailFallback() {
+  return (
+    <section aria-labelledby="recap-heading" aria-busy="true">
+      <SectionHeader id="recap-heading" title="Weekly recaps" href="/recaps" />
+      <p className="text-sm text-muted">Opening the week…</p>
+    </section>
+  );
+}
+
+async function WeeklyRecapContent() {
   const packages = await getWeeklyRecaps();
   const week = packages[0]?.week;
   const cards = packages.flatMap((item) =>
