@@ -1,4 +1,4 @@
-import { sql, type SQL } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
   draftPicks,
@@ -25,6 +25,7 @@ import {
   extractSubtree,
   extractTeams,
   extractTransactions,
+  extractWeekStats,
 } from "./extract";
 import { gameKeyFromPath, leagueKeyFromPath, teamKeyFromPath, weekFromPath } from "./parse";
 
@@ -89,6 +90,10 @@ function resolvedGameKey(path: string, flat: unknown) {
 export async function ingest(path: string, flat: unknown): Promise<boolean> {
   const kind = classifyYahooPath(path);
   if (!kind) return false;
+  if (kind === "players" && path.includes("type=week")) {
+    await upsertWeekStats(path, flat);
+    return true;
+  }
 
   if (kind === "game" || kind === "game_weeks" || kind === "stat_categories") {
     await upsertGames(flat);
@@ -444,6 +449,25 @@ async function upsertPlayers(flat: unknown, leagueKey: string | null) {
           updatedAt: new Date(),
         },
       });
+  }
+}
+
+async function upsertWeekStats(path: string, flat: unknown) {
+  const leagueKey = leagueKeyFromPath(path);
+  const week = weekFromPath(path);
+  if (!leagueKey || week == null) return;
+  const db = getDb();
+  for (const row of extractWeekStats(flat)) {
+    await db
+      .update(rosterEntries)
+      .set({ weekStats: row.stats })
+      .where(
+        and(
+          eq(rosterEntries.leagueKey, leagueKey),
+          eq(rosterEntries.playerKey, row.playerKey),
+          eq(rosterEntries.week, week),
+        ),
+      );
   }
 }
 

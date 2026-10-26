@@ -1,8 +1,9 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { io } from "next/cache";
 import postgres from "postgres";
 import { getDb } from "@/src/db/client";
-import { yahooResources, yahooTokens } from "@/src/db/schema";
+import { articles, leagues, matchups, opinionColumns, yahooResources, yahooTokens } from "@/src/db/schema";
+import { completedWeek } from "@/src/recap/brief";
 import { redirectUri } from "@/src/yahoo/client";
 
 export const YAHOO_TOKEN_ID = "default";
@@ -30,6 +31,15 @@ export type AdminSettings = {
   database: DatabaseStatus;
 };
 
+export type BackfillWeek = {
+  week: number;
+  recap: boolean;
+  rankings: boolean;
+  results: boolean;
+  waivers: boolean;
+  previousRankings: boolean;
+};
+
 export type AdminDashboard = {
   settings: AdminSettings;
   connection: YahooConnectionStatus | null;
@@ -42,6 +52,14 @@ export function callbackPathMatches(uri: string) {
   } catch {
     return false;
   }
+}
+
+export function adminReturnUrl(redirectUriValue: string, params: Record<string, string> = {}) {
+  const url = new URL("/admin", redirectUriValue);
+  for (const [key, value] of Object.entries(params)) {
+    if (value) url.searchParams.set(key, value);
+  }
+  return url;
 }
 
 export function publicError(error: unknown) {
@@ -102,6 +120,53 @@ async function yahooConnection(): Promise<YahooConnectionStatus> {
     updatedAt: token.updatedAt.toISOString(),
     lastFetchAt: latest?.fetchedAt.toISOString() ?? null,
   };
+}
+
+export async function loadBackfillWeeks(leagueKey: string): Promise<BackfillWeek[]> {
+  const db = getDb();
+  const [league] = await db
+    .select({ startWeek: leagues.startWeek })
+    .from(leagues)
+    .where(eq(leagues.leagueKey, leagueKey))
+    .limit(1);
+  if (!league) return [];
+  const matchupRows = await db
+    .select({ week: matchups.week, status: matchups.status })
+    .from(matchups)
+    .where(eq(matchups.leagueKey, leagueKey));
+  const latest = completedWeek(matchupRows);
+  if (latest == null) return [];
+  const start = league.startWeek && league.startWeek > 0 ? league.startWeek : 1;
+  const [articleRows, opinionRows] = await Promise.all([
+    db
+      .select({ week: articles.week, scope: articles.scope })
+      .from(articles)
+      .where(and(eq(articles.leagueKey, leagueKey), inArray(articles.scope, ["league", "power-rankings"]))),
+    db
+      .select({ week: opinionColumns.week, desk: opinionColumns.desk, status: opinionColumns.status })
+      .from(opinionColumns)
+      .where(eq(opinionColumns.leagueKey, leagueKey)),
+  ]);
+  const recapWeeks = new Set(articleRows.filter((row) => row.scope === "league").map((row) => row.week));
+  const rankingWeeks = new Set(articleRows.filter((row) => row.scope === "power-rankings").map((row) => row.week));
+  const resultWeeks = new Set(
+    opinionRows.filter((row) => row.desk === "results" && row.status !== "discarded").map((row) => row.week),
+  );
+  const waiverWeeks = new Set(
+    opinionRows.filter((row) => row.desk === "waivers" && row.status !== "discarded").map((row) => row.week),
+  );
+  const weeks: BackfillWeek[] = [];
+  for (let week = start; week <= latest; week += 1) {
+    weeks.push({
+      week,
+      recap: recapWeeks.has(week),
+      rankings: rankingWeeks.has(week),
+      results: resultWeeks.has(week),
+      waivers: waiverWeeks.has(week),
+      previousRankings: week === start || rankingWeeks.has(week - 1),
+    });
+  }
+  return weeks;
 }
 
 export async function loadAdminDashboard(): Promise<AdminDashboard> {

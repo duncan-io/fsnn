@@ -1,8 +1,4 @@
-export const RECAP_REPORTER = {
-  name: "Samir Adeyemi",
-  beat: "Week in Review",
-  initials: "SA",
-} as const;
+import type { BiggestWin, HeadToHead, LineupPlayer, PlayoffLine } from "../facts/types";
 
 export type RecapRecord = {
   wins: number;
@@ -31,6 +27,18 @@ export type BriefSide = {
   pointsFor: number;
   pointsAgainst: number;
   topPerformers: BriefPerformer[];
+  lineup?: LineupPlayer[];
+  benchPoints?: number | null;
+  faabBalance?: number | null;
+  waiverPriority?: number | null;
+  moves?: number | null;
+  trades?: number | null;
+  longestStreak?: string;
+  biggestWin?: BiggestWin | null;
+  headToHead?: HeadToHead[];
+  remainingOpponents?: Array<{ name: string; pointsPerGame: number | null }>;
+  playoff?: PlayoffLine | null;
+  rankByWeek?: Array<{ week: number; rank: number }>;
 };
 
 export type BriefMatchup = {
@@ -39,6 +47,7 @@ export type BriefMatchup = {
   margin: number;
   winner: BriefSide;
   loser: BriefSide;
+  leads?: string[];
 };
 
 export type BriefTransactionPlayer = {
@@ -64,6 +73,8 @@ export type WeekBrief = {
   weekEnd: string | null;
   matchups: BriefMatchup[];
   transactions: BriefTransaction[];
+  scoringType?: string | null;
+  rosterSlots?: string[];
 };
 
 export type RecapSection = {

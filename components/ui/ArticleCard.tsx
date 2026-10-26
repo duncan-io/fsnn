@@ -1,17 +1,20 @@
 import Link from "next/link";
 import type { Article, Team } from "@/lib/types";
 import { lookupTeams } from "@/lib/format";
+import { EngagementCounts } from "@/components/engagement/EngagementCounts";
 import { ArticleArt } from "@/components/ui/ArticleArt";
 import { KindBadge } from "@/components/ui/KindBadge";
 import { ReporterByline } from "@/components/ui/ReporterByline";
+import type { Engagement } from "@/src/readers/store";
 
 type ArticleCardProps = {
   article: Article;
   teams: Team[];
   variant: "lg" | "md" | "compact";
+  engagement: Engagement;
 };
 
-export function ArticleCard({ article, teams, variant }: ArticleCardProps) {
+export function ArticleCard({ article, teams, variant, engagement }: ArticleCardProps) {
   const featured = lookupTeams(article.teamIds, teams);
   const href = `/articles/${article.slug}`;
 
@@ -26,6 +29,9 @@ export function ArticleCard({ article, teams, variant }: ArticleCardProps) {
           <h3 className="mt-1 line-clamp-3 font-display text-base font-bold leading-tight group-hover:text-accent">
             {article.headline}
           </h3>
+          <div className="mt-1">
+            <EngagementCounts likes={engagement.likes} comments={engagement.comments} />
+          </div>
         </div>
       </Link>
     );
@@ -58,6 +64,9 @@ export function ArticleCard({ article, teams, variant }: ArticleCardProps) {
           readTimeMinutes={large ? article.readTimeMinutes : undefined}
           dense={!large}
         />
+      </div>
+      <div className="mt-2">
+        <EngagementCounts likes={engagement.likes} comments={engagement.comments} />
       </div>
     </Link>
   );

@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { getLeague } from "@/lib/data";
 import { pageWidth } from "@/lib/labels";
+import { ReaderMenu } from "@/components/site/ReaderMenu";
 import { SiteNav } from "@/components/site/SiteNav";
 
 function Wordmark() {
@@ -50,6 +52,13 @@ export async function SiteHeader() {
             <span className="mx-1.5 text-muted">·</span>
             Wk {league.currentWeek}
           </Link>
+          <Suspense
+            fallback={
+              <span className="font-display text-xs font-bold uppercase tracking-wide text-muted">Sign in</span>
+            }
+          >
+            <ReaderMenu />
+          </Suspense>
           <SearchMark />
         </div>
       </div>

@@ -3,6 +3,7 @@
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { publicError, YAHOO_TOKEN_ID } from "@/lib/admin/status";
+import { generateWeek, summarizeBackfill } from "@/src/backfill/week";
 import {
   adminPassword,
   clearAdminSession,
@@ -14,7 +15,7 @@ import {
 import { getDb } from "@/src/db/client";
 import { yahooTokens } from "@/src/db/schema";
 import { redirectUri } from "@/src/yahoo/client";
-import { discardOpinion, publishOpinion } from "@/src/opinion/store";
+import { discardOpinion, publishOpinion, resolveLeague } from "@/src/opinion/store";
 import type { OpinionDesk } from "@/src/opinion/types";
 import { describeWrite, writeOpinion } from "@/src/opinion/write";
 import { syncCurrentNfl } from "@/src/yahoo/sync";
@@ -73,6 +74,26 @@ export async function syncYahoo() {
   }
   const query = new URLSearchParams({ detail: detail.slice(0, 240) });
   query.set(failed ? "error" : "notice", "sync");
+  redirect(`/admin?${query.toString()}`);
+}
+
+export async function generateBackfillWeek(formData: FormData) {
+  await guard();
+  const week = Number(formData.get("week"));
+  let failed = false;
+  let detail = "";
+  try {
+    if (!Number.isInteger(week) || week < 1) throw new Error("Pick a week.");
+    const league = await resolveLeague();
+    const results = await generateWeek(league.leagueKey, week);
+    failed = results.some((result) => !result.ok);
+    detail = summarizeBackfill(week, results);
+  } catch (error) {
+    failed = true;
+    detail = publicError(error);
+  }
+  const query = new URLSearchParams({ detail: detail.slice(0, 240) });
+  query.set(failed ? "error" : "notice", "backfill");
   redirect(`/admin?${query.toString()}`);
 }
 

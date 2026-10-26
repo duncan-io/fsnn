@@ -1,3 +1,5 @@
+import { ArticleEngagement } from "@/components/engagement/ArticleEngagement";
+import { ArticleLead } from "@/components/ui/ArticleLead";
 import { ReporterByline } from "@/components/ui/ReporterByline";
 import { pageWidth } from "@/lib/labels";
 import type { OpinionColumnView } from "@/src/opinion/store";
@@ -10,6 +12,7 @@ export function OpinionStory({ column }: { column: OpinionColumnView }) {
   return (
     <main className={`${pageWidth} py-8`}>
       <article className="max-w-2xl">
+        <ArticleLead src={column.imageUrl} />
         <p className="font-display text-xs font-bold uppercase tracking-wider text-accent">
           Opinion · Week {column.week} · {column.desk === "waivers" ? "Waivers" : "Results"}
         </p>
@@ -48,6 +51,7 @@ export function OpinionStory({ column }: { column: OpinionColumnView }) {
             ))}
           </ul>
         </aside>
+        <ArticleEngagement slug={column.slug} />
       </article>
     </main>
   );

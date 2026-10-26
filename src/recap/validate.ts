@@ -1,55 +1,21 @@
+import {
+  collectNameTokens,
+  collectNumbers,
+  nameErrors,
+  numberErrors,
+  ordinaryWords,
+  pointTotalErrors,
+  rankErrors,
+  resultErrors,
+  type PlayerPoints,
+} from "../facts/claims";
 import type { RecapDraft, WeekBrief } from "./types";
 
-const ORDINARY_WORDS = new Set([
-  "a",
-  "an",
-  "the",
-  "and",
-  "or",
-  "nor",
-  "but",
-  "of",
-  "for",
-  "to",
-  "in",
-  "on",
-  "at",
-  "by",
-  "from",
-  "with",
-  "after",
-  "before",
-  "over",
-  "under",
-  "into",
-  "it",
-  "its",
-  "this",
-  "that",
-  "these",
-  "those",
-  "not",
-  "no",
-  "week",
-  "final",
-  "finals",
-  "recap",
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-  "sunday",
-  "night",
-  "nfl",
-  "faab",
-  "vs",
-]);
+const ORDINARY_WORDS = ordinaryWords();
 
 export type ValidationResult = { ok: true } | { ok: false; errors: string[] };
 
-export function validateRecap(brief: WeekBrief, draft: RecapDraft): ValidationResult {
+export function validateRecap(brief: WeekBrief, draft: RecapDraft, notes: string[] = []): ValidationResult {
   const errors: string[] = [];
   const column = draft?.column;
   const cards = draft?.cards;
@@ -90,17 +56,36 @@ export function validateRecap(brief: WeekBrief, draft: RecapDraft): ValidationRe
 
   const copy = collectCopy(draft);
   const allowed = collectNumbers(brief);
-  for (const value of numbersIn(copy)) {
-    if (!allowed.some((candidate) => Math.abs(candidate - value) < 0.001)) {
-      errors.push(`Invented number ${value}.`);
-    }
+  const names = collectNameTokens(brief);
+  for (const note of notes) {
+    collectNumbers(note, allowed);
+    collectNameTokens(note, names);
   }
-  const names = collectNames(brief);
-  for (const word of capitalizedWords(copy)) {
-    if (!names.has(normalizeToken(word)) && !ORDINARY_WORDS.has(normalizeToken(word))) {
-      errors.push(`Unknown name ${word}.`);
-    }
-  }
+  errors.push(...numberErrors(copy, allowed));
+  errors.push(...nameErrors(copy, names, ORDINARY_WORDS));
+  errors.push(
+    ...resultErrors(
+      copy,
+      brief.matchups.map((matchup) => ({
+        result: matchup.result,
+        winnerName: matchup.winner.teamName,
+        loserName: matchup.loser.teamName,
+      })),
+    ),
+  );
+  errors.push(
+    ...rankErrors(
+      copy,
+      brief.matchups.flatMap((matchup) =>
+        [matchup.winner, matchup.loser].map((side) => ({
+          name: side.teamName,
+          before: side.rankBefore,
+          after: side.rankAfter,
+        })),
+      ),
+    ),
+  );
+  errors.push(...pointTotalErrors(copy, playersIn(brief)));
 
   return errors.length === 0 ? { ok: true } : { ok: false, errors };
 }
@@ -118,54 +103,15 @@ function collectCopy(draft: RecapDraft): string {
   return parts.filter((part): part is string => typeof part === "string").join("\n");
 }
 
-function collectNumbers(value: unknown, into: number[] = []): number[] {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    into.push(value, Math.abs(value));
-  }
-  else if (Array.isArray(value)) value.forEach((item) => collectNumbers(item, into));
-  else if (value && typeof value === "object") {
-    Object.values(value).forEach((item) => collectNumbers(item, into));
-  }
-  return into;
-}
-
-function numbersIn(text: string): number[] {
-  return [...text.matchAll(/\d+(?:\.\d+)?/g)].map((match) => Number(match[0]));
-}
-
-function collectNames(brief: WeekBrief): Set<string> {
-  const names = new Set<string>();
-  const add = (name: string | null | undefined) => {
-    if (!name) return;
-    for (const word of name.split(/[^A-Za-z0-9'’]+/)) {
-      const token = normalizeToken(word);
-      if (token) names.add(token);
-    }
-  };
-  add(brief.leagueName);
+function playersIn(brief: WeekBrief): PlayerPoints[] {
+  const players: PlayerPoints[] = [];
   for (const matchup of brief.matchups) {
     for (const side of [matchup.winner, matchup.loser]) {
-      add(side.teamName);
-      add(side.managerName);
-      for (const performer of side.topPerformers) add(performer.name);
+      for (const player of side.lineup ?? []) players.push({ name: player.name, weekPoints: player.weekPoints });
+      for (const performer of side.topPerformers) players.push({ name: performer.name, weekPoints: performer.points });
     }
   }
-  for (const transaction of brief.transactions) {
-    for (const player of transaction.players) {
-      add(player.name);
-      add(player.sourceTeamName);
-      add(player.destinationTeamName);
-    }
-  }
-  return names;
-}
-
-function capitalizedWords(text: string): string[] {
-  return text.match(/[A-Z][A-Za-z0-9'’.-]*/g) ?? [];
-}
-
-function normalizeToken(word: string): string {
-  return word.toLowerCase().replace(/['’]s$/, "").replace(/[^a-z0-9]/g, "");
+  return players;
 }
 
 function sentenceCount(text: string): number {

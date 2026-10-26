@@ -1,4 +1,5 @@
-import { getStandings } from "@/lib/data";
+import { Suspense } from "react";
+import { getPowerRankings, getStandings } from "@/lib/data";
 import { formatRecord } from "@/lib/format";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import type { Team } from "@/lib/types";
@@ -39,25 +40,49 @@ function RankCard({ team }: { team: Team }) {
         <p className="mt-3 font-display text-xl font-extrabold uppercase leading-none">{team.abbreviation}</p>
         <p className="mt-1 text-sm font-medium">{team.name}</p>
         <p className="mt-2 text-xs text-muted">
-          {team.managerName} · {formatRecord(team)} · {team.streak}
+          {team.managerName} · {formatRecord(team)}
+          {team.streak ? ` · ${team.streak}` : ""}
         </p>
       </div>
     </li>
   );
 }
 
-export async function PowerRankingsStrip() {
-  const standings = await getStandings();
-  const top = standings.slice(0, 5);
-
+function RankingsGrid({ teams }: { teams: Team[] }) {
   return (
     <section aria-labelledby="rankings-heading">
       <SectionHeader id="rankings-heading" title="Power rankings" href="/power-rankings" />
       <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {top.map((team) => (
+        {teams.map((team) => (
           <RankCard key={team.id} team={team} />
         ))}
       </ol>
     </section>
   );
+}
+
+export function PowerRankingsStrip() {
+  return (
+    <Suspense
+      fallback={
+        <section aria-labelledby="rankings-heading" aria-busy="true">
+          <SectionHeader id="rankings-heading" title="Power rankings" href="/power-rankings" />
+          <p className="text-sm text-muted">Opening the rankings…</p>
+        </section>
+      }
+    >
+      <PowerRankingsContent />
+    </Suspense>
+  );
+}
+
+async function PowerRankingsContent() {
+  const rankings = await getPowerRankings();
+  const latest = rankings[0];
+  if (latest) {
+    const top = [...latest.teams].sort((a, b) => a.rank - b.rank).slice(0, 5);
+    return <RankingsGrid teams={top} />;
+  }
+  const standings = await getStandings();
+  return <RankingsGrid teams={standings.slice(0, 5)} />;
 }

@@ -1,3 +1,5 @@
+import { extractJson } from "../minimax/json";
+
 export type ColumnCopy = {
   headline: string;
   dek: string;
@@ -5,20 +7,18 @@ export type ColumnCopy = {
 };
 
 export function parseColumn(raw: string): ColumnCopy {
-  const stripped = raw
-    .replace(/<think>[\s\S]*?<\/think>/gi, "")
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "");
-  const start = stripped.indexOf("{");
-  const end = stripped.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("Column was not JSON.");
   let value: unknown;
   try {
-    value = JSON.parse(stripped.slice(start, end + 1));
-  } catch {
-    throw new Error("Column JSON could not be parsed.");
+    value = extractJson(raw);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("could not be parsed")) throw new Error("Column JSON could not be parsed.");
+    throw new Error("Column was not JSON.");
   }
+  return readColumn(value);
+}
+
+export function readColumn(value: unknown): ColumnCopy {
   if (!value || typeof value !== "object") throw new Error("Column JSON was empty.");
   const row = value as { headline?: unknown; dek?: unknown; paragraphs?: unknown };
   if (typeof row.headline !== "string" || typeof row.dek !== "string" || !Array.isArray(row.paragraphs)) {

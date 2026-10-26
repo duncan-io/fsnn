@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import type { Article, Team } from "@/lib/types";
 import { getDb } from "@/src/db/client";
 import { articles } from "@/src/db/schema";
+import { mediaPath } from "@/src/images/key";
 import { readTimeMinutes, teamsFromBrief } from "@/src/recap/display";
 import { recapSlug, matchupAnchor } from "@/src/recap/slug";
 import type { RecapBody, WeekBrief } from "@/src/recap/types";
@@ -91,7 +92,7 @@ async function readStoredRecap(slug: string): Promise<StoredRecap | null> {
   cacheTag("recaps");
   const db = getDb();
   const [row] = await db.select().from(articles).where(eq(articles.slug, slug)).limit(1);
-  if (!row) return null;
+  if (!row || (row.scope !== "league" && row.scope !== "matchup")) return null;
   const brief = asBrief(row.factSheet);
   if (!brief) return null;
   const body = asBody(row.body);
@@ -156,6 +157,7 @@ function toArticle(row: ArticleRow, body?: RecapBody | null): Article {
     publishedAt: row.publishedAt.toISOString(),
     readTimeMinutes: readTimeMinutes(copy),
     tags: [`week ${row.week}`, "recap"],
+    imageUrl: mediaPath(row.imageKey),
   };
 }
 

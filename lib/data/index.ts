@@ -11,6 +11,8 @@ import {
 
 export { getStoredRecap, getWeeklyRecaps } from "@/lib/data/recaps";
 export type { StoredRecap, WeeklyRecapPackage } from "@/lib/data/recaps";
+export { getPowerRankings, getStoredRanking } from "@/lib/data/rankings";
+export type { StoredRanking } from "@/lib/data/rankings";
 
 /**
  * Newsroom data access. These functions return fixtures today.

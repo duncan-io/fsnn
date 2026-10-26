@@ -1,14 +1,20 @@
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
+  gameWeeks,
   leagues,
   matchups,
   opinionColumns,
   playerOwnership,
+  rosterEntries,
   teamStandings,
   teams,
   transactions,
 } from "../db/schema";
+import { rewindActivity, seasonPointsThrough } from "../facts/asof";
+import { recordsThrough } from "../facts/memory";
+import { mediaPath } from "../images/key";
+import { completedWeek, inWeekWindow, playerWeekPoints } from "../recap/brief";
 import type { OpinionBrief, OpinionDesk, TeamSeason, WaiverAdd, WeekLine } from "./types";
 
 export type LeagueContext = {
@@ -33,6 +39,7 @@ export type OpinionColumnView = {
   columnistName: string;
   columnistBeat: string;
   columnistInitials: string;
+  imageUrl?: string;
   createdAt: Date;
   publishedAt: Date | null;
 };
@@ -68,25 +75,32 @@ export async function findWeekColumn(leagueKey: string, week: number, desk: Opin
   return row ?? null;
 }
 
-export async function usedAngleKeys(leagueKey: string): Promise<Set<string>> {
+export async function usedAngleKeys(leagueKey: string, beforeWeek?: number): Promise<Set<string>> {
   const db = getDb();
   const rows = await db
     .select({
       angleId: opinionColumns.angleId,
       teamKeys: opinionColumns.teamKeys,
       status: opinionColumns.status,
+      week: opinionColumns.week,
     })
     .from(opinionColumns)
     .where(eq(opinionColumns.leagueKey, leagueKey));
   const used = new Set<string>();
   for (const row of rows) {
     if (row.status === "discarded") continue;
+    if (beforeWeek != null && row.week >= beforeWeek) continue;
     for (const teamKey of row.teamKeys) used.add(`${row.angleId}:${teamKey}`);
   }
   return used;
 }
 
-export async function loadStandings(leagueKey: string): Promise<TeamSeason[]> {
+export async function loadStandings(leagueKey: string, week?: number): Promise<TeamSeason[]> {
+  if (week == null || !(await isHistoricalWeek(leagueKey, week))) return loadLiveStandings(leagueKey);
+  return loadHistoricalStandings(leagueKey, week);
+}
+
+async function loadLiveStandings(leagueKey: string): Promise<TeamSeason[]> {
   const db = getDb();
   const [standingRows, teamRows] = await Promise.all([
     db.select().from(teamStandings).where(eq(teamStandings.leagueKey, leagueKey)),
@@ -114,7 +128,11 @@ export async function loadStandings(leagueKey: string): Promise<TeamSeason[]> {
   return seasons;
 }
 
-export async function loadWeekLines(leagueKey: string, standings: TeamSeason[]): Promise<WeekLine[]> {
+export async function loadWeekLines(
+  leagueKey: string,
+  standings: TeamSeason[],
+  week?: number,
+): Promise<WeekLine[]> {
   const db = getDb();
   const [rows, teamRows] = await Promise.all([
     db.select().from(matchups).where(eq(matchups.leagueKey, leagueKey)),
@@ -124,8 +142,8 @@ export async function loadWeekLines(leagueKey: string, standings: TeamSeason[]):
     (row) => row.status === "postevent" && num(row.points) != null && num(row.projectedPoints) != null,
   );
   if (completed.length === 0) return [];
-  const week = Math.max(...completed.map((row) => row.week));
-  const weekRows = completed.filter((row) => row.week === week);
+  const target = week ?? Math.max(...completed.map((row) => row.week));
+  const weekRows = completed.filter((row) => row.week === target);
   const byTeam = new Map(weekRows.map((row) => [row.teamKey, row]));
   const names = new Map(teamRows.map((team) => [team.teamKey, team.name?.trim() || team.teamKey]));
   const seasons = new Map(standings.map((team) => [team.teamKey, team]));
@@ -138,7 +156,7 @@ export async function loadWeekLines(leagueKey: string, standings: TeamSeason[]):
     if (opponentPoints == null) continue;
     const season = seasons.get(row.teamKey);
     lines.push({
-      week,
+      week: target,
       teamKey: row.teamKey,
       teamName: names.get(row.teamKey) ?? row.teamKey,
       points,
@@ -154,42 +172,73 @@ export async function loadWeekLines(leagueKey: string, standings: TeamSeason[]):
   return lines;
 }
 
-export async function loadWaiverAdds(leagueKey: string, standings: TeamSeason[], now = new Date()): Promise<WaiverAdd[]> {
+export async function loadWaiverAdds(
+  leagueKey: string,
+  standings: TeamSeason[],
+  options: { now?: Date; week?: number } = {},
+): Promise<WaiverAdd[]> {
   const db = getDb();
-  const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const [rows, ownership] = await Promise.all([
-    db
-      .select()
-      .from(transactions)
-      .where(and(eq(transactions.leagueKey, leagueKey), gte(transactions.timestamp, since))),
-    db
-      .select({ playerKey: playerOwnership.playerKey, seasonPoints: playerOwnership.seasonPoints })
-      .from(playerOwnership)
-      .where(eq(playerOwnership.leagueKey, leagueKey)),
-  ]);
-  const points = new Map(ownership.map((row) => [row.playerKey, num(row.seasonPoints)]));
-  const seasons = new Map(standings.map((team) => [team.teamKey, team]));
-  const adds: WaiverAdd[] = [];
-  for (const row of rows) {
-    if (row.status !== "successful" || row.faabBid == null || row.faabBid <= 0) continue;
-    const player = addedPlayer(row.players);
-    if (!player) continue;
-    const season = seasons.get(player.teamKey);
-    if (!season) continue;
-    adds.push({
-      teamKey: season.teamKey,
-      teamName: season.teamName,
-      playerName: player.name,
-      bid: row.faabBid,
-      seasonPoints: points.get(player.playerKey) ?? null,
-      wins: season.wins,
-      losses: season.losses,
-      ties: season.ties,
-      rank: season.rank,
-      pointsFor: season.pointsFor,
-    });
+  if (options.week == null) {
+    const since = new Date((options.now ?? new Date()).getTime() - 7 * 24 * 60 * 60 * 1000);
+    const [rows, points] = await Promise.all([
+      db
+        .select()
+        .from(transactions)
+        .where(and(eq(transactions.leagueKey, leagueKey), gte(transactions.timestamp, since))),
+      ownershipPoints(leagueKey),
+    ]);
+    return waiverAdds(rows, standings, points);
   }
-  return adds;
+  const [rows, dates, historical] = await Promise.all([
+    db.select().from(transactions).where(eq(transactions.leagueKey, leagueKey)),
+    weekWindow(leagueKey, options.week),
+    isHistoricalWeek(leagueKey, options.week),
+  ]);
+  const points = historical ? await rosterPointsThrough(leagueKey, options.week) : await ownershipPoints(leagueKey);
+  const inWeek = rows.filter(
+    (row) => row.timestamp != null && inWeekWindow(row.timestamp, dates.start, dates.end),
+  );
+  return waiverAdds(inWeek, standings, points);
+}
+
+export async function replaceOpinionColumn(
+  values: typeof opinionColumns.$inferInsert,
+): Promise<{ outcome: "ok"; slug: string }> {
+  try {
+    await upsertOpinion(values);
+    return { outcome: "ok", slug: values.slug };
+  } catch (error) {
+    const constraint = violationName(error);
+    if (!constraint?.includes("slug")) throw error;
+    const slug = `${values.slug}-${values.angleId}`;
+    await upsertOpinion({ ...values, slug });
+    return { outcome: "ok", slug };
+  }
+}
+
+async function upsertOpinion(values: typeof opinionColumns.$inferInsert) {
+  const db = getDb();
+  await db
+    .insert(opinionColumns)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [opinionColumns.leagueKey, opinionColumns.week, opinionColumns.desk],
+      set: {
+        slug: values.slug,
+        headline: values.headline,
+        dek: values.dek,
+        body: values.body,
+        status: values.status,
+        angleId: values.angleId,
+        brief: values.brief,
+        teamKeys: values.teamKeys,
+        columnistName: values.columnistName,
+        columnistBeat: values.columnistBeat,
+        columnistInitials: values.columnistInitials,
+        publishedAt: values.publishedAt ?? null,
+        imageKey: null,
+      },
+    });
 }
 
 export async function insertOpinionColumn(
@@ -287,6 +336,7 @@ function toView(row: typeof opinionColumns.$inferSelect): OpinionColumnView | nu
     columnistName: row.columnistName,
     columnistBeat: row.columnistBeat,
     columnistInitials: row.columnistInitials,
+    imageUrl: mediaPath(row.imageKey),
     createdAt: row.createdAt,
     publishedAt: row.publishedAt,
   };
@@ -302,6 +352,140 @@ function asBrief(value: unknown): OpinionBrief | null {
   if (!brief.counterEvidence.every((item) => typeof item === "string")) return null;
   if (typeof brief.heat !== "number") return null;
   return brief;
+}
+
+async function isHistoricalWeek(leagueKey: string, week: number): Promise<boolean> {
+  const db = getDb();
+  const rows = await db
+    .select({ week: matchups.week, status: matchups.status })
+    .from(matchups)
+    .where(eq(matchups.leagueKey, leagueKey));
+  const latest = completedWeek(rows);
+  return latest != null && week < latest;
+}
+
+async function loadHistoricalStandings(leagueKey: string, week: number): Promise<TeamSeason[]> {
+  const db = getDb();
+  const [teamRows, matchupRows, transactionRows, window] = await Promise.all([
+    db.select().from(teams).where(eq(teams.leagueKey, leagueKey)),
+    db.select().from(matchups).where(eq(matchups.leagueKey, leagueKey)),
+    db.select().from(transactions).where(eq(transactions.leagueKey, leagueKey)),
+    weekWindow(leagueKey, week),
+  ]);
+  const names = new Map(teamRows.map((team) => [team.teamKey, team.name?.trim() || team.teamKey]));
+  const records = recordsThrough(
+    [...names.entries()].map(([teamKey, teamName]) => ({ teamKey, teamName })),
+    matchupRows.map((row) => ({
+      week: row.week,
+      teamKey: row.teamKey,
+      opponentTeamKey: row.opponentTeamKey,
+      points: num(row.points),
+      status: row.status,
+    })),
+    week,
+  );
+  const rewound = rewindActivity(
+    teamRows.map((team) => ({
+      teamKey: team.teamKey,
+      faabBalance: team.faabBalance,
+      moves: team.numberOfMoves,
+      trades: team.numberOfTrades,
+    })),
+    transactionRows.map((row) => ({
+      type: row.type,
+      status: row.status,
+      timestamp: row.timestamp,
+      faabBid: row.faabBid,
+      players: row.players,
+    })),
+    window.end,
+  );
+  return records.map((record) => ({
+    teamKey: record.teamKey,
+    teamName: names.get(record.teamKey) ?? record.teamKey,
+    wins: record.wins,
+    losses: record.losses,
+    ties: record.ties,
+    pointsFor: record.pointsFor,
+    pointsAgainst: record.pointsAgainst,
+    rank: record.rank,
+    moves: rewound.get(record.teamKey)?.moves ?? 0,
+  }));
+}
+
+async function weekWindow(leagueKey: string, week: number): Promise<{ start: string | null; end: string | null }> {
+  const db = getDb();
+  const [league] = await db
+    .select({ gameKey: leagues.gameKey })
+    .from(leagues)
+    .where(eq(leagues.leagueKey, leagueKey))
+    .limit(1);
+  if (!league) return { start: null, end: null };
+  const [row] = await db
+    .select({ startDate: gameWeeks.startDate, endDate: gameWeeks.endDate })
+    .from(gameWeeks)
+    .where(and(eq(gameWeeks.gameKey, league.gameKey), eq(gameWeeks.week, week)))
+    .limit(1);
+  return { start: row?.startDate ?? null, end: row?.endDate ?? null };
+}
+
+async function ownershipPoints(leagueKey: string): Promise<Map<string, number | null>> {
+  const db = getDb();
+  const ownership = await db
+    .select({ playerKey: playerOwnership.playerKey, seasonPoints: playerOwnership.seasonPoints })
+    .from(playerOwnership)
+    .where(eq(playerOwnership.leagueKey, leagueKey));
+  return new Map(ownership.map((row) => [row.playerKey, num(row.seasonPoints)]));
+}
+
+async function rosterPointsThrough(leagueKey: string, week: number): Promise<Map<string, number | null>> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      playerKey: rosterEntries.playerKey,
+      week: rosterEntries.week,
+      raw: rosterEntries.raw,
+    })
+    .from(rosterEntries)
+    .where(and(eq(rosterEntries.leagueKey, leagueKey), lte(rosterEntries.week, week)));
+  const totals = seasonPointsThrough(
+    rows.map((row) => ({
+      playerKey: row.playerKey,
+      week: row.week,
+      points: playerWeekPoints(row.raw),
+    })),
+    week,
+  );
+  return new Map(totals);
+}
+
+function waiverAdds(
+  rows: Array<{ status: string | null; faabBid: number | null; players: unknown }>,
+  standings: TeamSeason[],
+  points: Map<string, number | null>,
+): WaiverAdd[] {
+  const seasons = new Map(standings.map((team) => [team.teamKey, team]));
+  const adds: WaiverAdd[] = [];
+  for (const row of rows) {
+    if (row.status !== "successful" || row.faabBid == null || row.faabBid <= 0) continue;
+    const player = addedPlayer(row.players);
+    if (!player) continue;
+    const season = seasons.get(player.teamKey);
+    if (!season) continue;
+    adds.push({
+      teamKey: season.teamKey,
+      teamName: season.teamName,
+      playerName: player.name,
+      bid: row.faabBid,
+      seasonPoints: points.get(player.playerKey) ?? null,
+      wins: season.wins,
+      losses: season.losses,
+      ties: season.ties,
+      rank: season.rank,
+      pointsFor: season.pointsFor,
+    });
+  }
+  return adds;
 }
 
 function addedPlayer(players: unknown): { name: string; playerKey: string; teamKey: string } | null {

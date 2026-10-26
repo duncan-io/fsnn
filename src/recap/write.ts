@@ -1,6 +1,9 @@
+import type { Persona } from "../personas/staff";
+import { openAiJsonDraft } from "../search/openai";
+import type { LookupPlayer } from "../search/lookup";
 import type { RecapDraft, WeekBrief } from "./types";
 import { validateRecap } from "./validate";
-import { RECAP_STYLE } from "./voice";
+import { recapStyle } from "./voice";
 
 const RECAP_SCHEMA = {
   type: "object",
@@ -47,27 +50,24 @@ const RECAP_SCHEMA = {
   },
 } as const;
 
-type ChatResponse = {
-  choices?: Array<{ message?: { content?: string | null } }>;
-};
-
 export async function writeRecap(
   brief: WeekBrief,
+  persona: Persona,
   complete: typeof fetch = fetch,
 ): Promise<RecapDraft> {
   const errors: string[] = [];
   let last = "Recap draft failed validation.";
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    let draft: RecapDraft;
+    let draft: { draft: RecapDraft; snippets: string[] };
     try {
-      draft = await requestDraft(brief, errors, complete);
+      draft = await requestDraft(brief, persona, errors, complete);
     } catch (error) {
       last = error instanceof Error ? error.message : "Recap draft could not be read.";
       errors.splice(0, errors.length, last);
       continue;
     }
-    const result = validateRecap(brief, draft);
-    if (result.ok) return draft;
+    const result = validateRecap(brief, draft.draft, draft.snippets);
+    if (result.ok) return draft.draft;
     last = result.errors.join("\n");
     errors.splice(0, errors.length, ...result.errors);
   }
@@ -76,9 +76,10 @@ export async function writeRecap(
 
 async function requestDraft(
   brief: WeekBrief,
+  persona: Persona,
   errors: string[],
   complete: typeof fetch,
-): Promise<RecapDraft> {
+): Promise<{ draft: RecapDraft; snippets: string[] }> {
   const key = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_MODEL;
   if (!key || !model) {
@@ -86,31 +87,38 @@ async function requestDraft(
   }
   const correction =
     errors.length > 0 ? `\n\nFix these problems and return the full JSON again:\n${errors.join("\n")}` : "";
-  const response = await complete("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.8,
-      messages: [
-        { role: "system", content: RECAP_STYLE },
-        { role: "user", content: `${JSON.stringify(brief)}${correction}` },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: { name: "weekly_recap", strict: true, schema: RECAP_SCHEMA },
-      },
-    }),
+  const result = await openAiJsonDraft<RecapDraft>({
+    key,
+    model,
+    temperature: 0.8,
+    messages: [
+      { role: "system", content: recapStyle(persona) },
+      { role: "user", content: `${JSON.stringify(brief)}${correction}` },
+    ],
+    schemaName: "weekly_recap",
+    schema: RECAP_SCHEMA,
+    players: playersIn(brief),
+    week: brief.week,
+    complete,
   });
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`OpenAI recap request failed (${response.status}): ${detail.slice(0, 500)}`);
+  return { draft: result.value, snippets: result.snippets };
+}
+
+function playersIn(brief: WeekBrief): LookupPlayer[] {
+  const players: LookupPlayer[] = [];
+  const seen = new Set<string>();
+  for (const matchup of brief.matchups) {
+    for (const side of [matchup.winner, matchup.loser]) {
+      for (const player of side.lineup ?? []) add(players, seen, player.name, player.nflTeam, player.weekPoints);
+      for (const performer of side.topPerformers) add(players, seen, performer.name, null, performer.points);
+    }
   }
-  const payload = (await response.json()) as ChatResponse;
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) throw new Error("OpenAI recap response was empty.");
-  return JSON.parse(content) as RecapDraft;
+  return players;
+}
+
+function add(players: LookupPlayer[], seen: Set<string>, name: string, nflTeam: string | null, weekPoints: number | null) {
+  const key = name.toLowerCase();
+  if (seen.has(key)) return;
+  seen.add(key);
+  players.push({ name, nflTeam, weekPoints });
 }

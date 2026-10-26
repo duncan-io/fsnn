@@ -1,4 +1,5 @@
 import type { Article, League, Matchup, Reporter, Team } from "@/lib/types";
+import { assignPersona, type Persona } from "@/src/personas/staff";
 
 export const league: League = {
   name: "The Gridiron Guild",
@@ -6,14 +7,9 @@ export const league: League = {
   currentWeek: 7,
 };
 
-const reporters = {
-  lena: { name: "Lena Cross", beat: "Breaking Desk", initials: "LC" },
-  miles: { name: "Miles Okonkwo", beat: "Power Rankings", initials: "MO" },
-  jules: { name: "Jules Navarro", beat: "Manager Mic", initials: "JN" },
-  samir: { name: "Samir Adeyemi", beat: "Week in Review", initials: "SA" },
-  quinn: { name: "Quinn Adler", beat: "Film Room", initials: "QA" },
-  bea: { name: "Bea Langston", beat: "The Lookahead", initials: "BL" },
-} satisfies Record<string, Reporter>;
+function reporterOf(persona: Persona): Reporter {
+  return { name: persona.name, beat: persona.beat, initials: persona.initials };
+}
 
 export const teams: Team[] = [
   {
@@ -260,7 +256,7 @@ export const trendingSlugs = [
   "priya-shah-drafted-a-tavern",
 ] as const;
 
-export const articles: Article[] = [
+const articleDrafts: Array<Omit<Article, "reporter">> = [
   {
     id: "a01",
     slug: "injury-flex-appeal-wr1",
@@ -268,7 +264,6 @@ export const articles: Article[] = [
     headline: "Flex Appeal's WR1 is questionable, and the flex spot just got honest",
     dek: "Jordan Pike's lead receiver is a game-time decision. The rest of the roster was built to be optional.",
     teamIds: ["flex"],
-    reporter: reporters.lena,
     publishedAt: "2026-10-20T13:40:00.000Z",
     readTimeMinutes: 3,
     tags: ["injuries", "week 7"],
@@ -280,7 +275,6 @@ export const articles: Article[] = [
     headline: "Trade wire: Sleeper Cell ships a first for a streaming quarterback",
     dek: "Noah Kim paid a future pick for a one-week answer. The Guild chat has not been this loud since the draft.",
     teamIds: ["sleeper"],
-    reporter: reporters.lena,
     publishedAt: "2026-10-20T11:10:00.000Z",
     readTimeMinutes: 4,
     tags: ["trades", "quarterbacks"],
@@ -292,7 +286,6 @@ export const articles: Article[] = [
     headline: "Commissioner locks Week 8 lineups at Thursday 8:15 p.m.",
     dek: "No more late swaps after the first kick. Managers who live on the wire just lost their favorite loophole.",
     teamIds: [],
-    reporter: reporters.lena,
     publishedAt: "2026-10-20T09:05:00.000Z",
     readTimeMinutes: 2,
     tags: ["league", "rules"],
@@ -304,7 +297,6 @@ export const articles: Article[] = [
     headline: "The Gremlins are 4-3 and playing like a team that belongs in January",
     dek: "Darius Holt's roster is fifth in the standings and second in points. The record is the only thing still catching up.",
     teamIds: ["gremlins"],
-    reporter: reporters.quinn,
     publishedAt: "2026-10-20T08:30:00.000Z",
     readTimeMinutes: 6,
     tags: ["film room", "contenders"],
@@ -316,7 +308,6 @@ export const articles: Article[] = [
     headline: "Wolves feast: 142.6 buries Benchwarmers Anonymous",
     dek: "Marcus Bell's waiver core posted a season high and pushed the league's last winless streak to four.",
     teamIds: ["wolves", "bench"],
-    reporter: reporters.samir,
     publishedAt: "2026-10-19T23:15:00.000Z",
     readTimeMinutes: 5,
     tags: ["week 7", "recap"],
@@ -328,7 +319,6 @@ export const articles: Article[] = [
     headline: "Realtors close on Hail Mary in a one-score final",
     dek: "Amina Brooks outlasted Cole Nguyen 121.8 to 110.3, and the Holdings' two-week grip on second place is gone.",
     teamIds: ["realtors", "hail"],
-    reporter: reporters.samir,
     publishedAt: "2026-10-19T22:40:00.000Z",
     readTimeMinutes: 4,
     tags: ["week 7", "recap"],
@@ -340,7 +330,6 @@ export const articles: Article[] = [
     headline: 'Priya Shah: "I drafted a tavern, not a contender"',
     dek: "The Touchdown Tavern manager on a three-game slide, a brutal points-against number, and why she is not rebuilding.",
     teamIds: ["tavern"],
-    reporter: reporters.jules,
     publishedAt: "2026-10-19T18:00:00.000Z",
     readTimeMinutes: 8,
     tags: ["manager mic", "interview"],
@@ -356,7 +345,6 @@ export const articles: Article[] = [
     headline: "Power rankings, Week 7: the Wolves have no peer",
     dek: "Waiver Wire Wolves stay at No. 1. The Pirates climb, Hail Mary falls, and the Tavern's drop is the loudest in the Guild.",
     teamIds: ["wolves", "pirates", "tavern"],
-    reporter: reporters.miles,
     publishedAt: "2026-10-19T16:00:00.000Z",
     readTimeMinutes: 7,
     tags: ["rankings", "week 7"],
@@ -368,7 +356,6 @@ export const articles: Article[] = [
     headline: "Week 7 preview: two live games, two coin flips still on the clock",
     dek: "The Gremlins lead the Tavern at the half. Estates-Bandits and Diners-Pirates will decide who is still pretending.",
     teamIds: ["gremlins", "tavern", "estates", "bandits"],
-    reporter: reporters.bea,
     publishedAt: "2026-10-19T12:00:00.000Z",
     readTimeMinutes: 5,
     tags: ["preview", "week 7"],
@@ -380,7 +367,6 @@ export const articles: Article[] = [
     headline: "Points against is lying about the Playoff Pirates",
     dek: "Harper Quinn has the third-best offense and the schedule of a team that keeps drawing the wrong night.",
     teamIds: ["pirates"],
-    reporter: reporters.quinn,
     publishedAt: "2026-10-19T09:30:00.000Z",
     readTimeMinutes: 5,
     tags: ["luck", "schedule"],
@@ -392,7 +378,6 @@ export const articles: Article[] = [
     headline: "Marcus Bell on the wire, the claim, and never looking back",
     dek: "The league's best manager says his draft was a rumor and the standings were built on Wednesday mornings.",
     teamIds: ["wolves"],
-    reporter: reporters.jules,
     publishedAt: "2026-10-18T20:00:00.000Z",
     readTimeMinutes: 9,
     tags: ["manager mic", "waivers"],
@@ -408,7 +393,6 @@ export const articles: Article[] = [
     headline: "Pirates plunder Draft Day in a Thursday-night ambush",
     dek: "A week-six leftover that still explains why Chris Lang is answering messages in the group chat.",
     teamIds: ["pirates", "diners"],
-    reporter: reporters.samir,
     publishedAt: "2026-10-18T15:00:00.000Z",
     readTimeMinutes: 4,
     tags: ["week 6", "recap"],
@@ -420,7 +404,6 @@ export const articles: Article[] = [
     headline: "The Bye Week Bandits built a roster that cannot survive a bye",
     dek: "Samira Ortiz is 2-5 because three starters share a week off and the bench is a suggestion.",
     teamIds: ["bandits"],
-    reporter: reporters.quinn,
     publishedAt: "2026-10-18T12:00:00.000Z",
     readTimeMinutes: 5,
     tags: ["byes", "roster"],
@@ -432,7 +415,6 @@ export const articles: Article[] = [
     headline: "Estates vs. Bandits is a basement bout with real playoff math",
     dek: "Riley Chen can climb into the conversation. Samira Ortiz can fall out of it before Sunday dinner.",
     teamIds: ["estates", "bandits"],
-    reporter: reporters.bea,
     publishedAt: "2026-10-18T09:00:00.000Z",
     readTimeMinutes: 4,
     tags: ["preview", "playoffs"],
@@ -444,7 +426,6 @@ export const articles: Article[] = [
     headline: "Sleeper Cell's quiet week still parked them in sixth",
     dek: "No spike, no collapse. Noah Kim's floor is the most boring advantage in the Guild.",
     teamIds: ["sleeper"],
-    reporter: reporters.samir,
     publishedAt: "2026-10-17T22:00:00.000Z",
     readTimeMinutes: 3,
     tags: ["week 6", "recap"],
@@ -456,7 +437,6 @@ export const articles: Article[] = [
     headline: "Flex Appeal's name is a strategy, and the strategy is failing",
     dek: "Jordan Pike can start anyone. That is not the same as having someone you have to start.",
     teamIds: ["flex"],
-    reporter: reporters.quinn,
     publishedAt: "2026-10-17T16:00:00.000Z",
     readTimeMinutes: 6,
     tags: ["roster construction"],
@@ -468,7 +448,6 @@ export const articles: Article[] = [
     headline: 'Elena Voss, 1-6: "The bench is a lifestyle"',
     dek: "The Benchwarmers manager has the league's worst points against and no interest in a sympathy column.",
     teamIds: ["bench"],
-    reporter: reporters.jules,
     publishedAt: "2026-10-17T12:00:00.000Z",
     readTimeMinutes: 7,
     tags: ["manager mic", "rebuilding"],
@@ -484,7 +463,6 @@ export const articles: Article[] = [
     headline: "Stock up, stock down: five risers after Week 6",
     dek: "The Gremlins and the Pirates are the climbers. Hail Mary's hold on the top of the table was already loose.",
     teamIds: ["gremlins", "pirates", "hail"],
-    reporter: reporters.miles,
     publishedAt: "2026-10-17T09:00:00.000Z",
     readTimeMinutes: 5,
     tags: ["rankings", "week 6"],
@@ -496,7 +474,6 @@ export const articles: Article[] = [
     headline: "Touchdown Tavern's overtime heartbreak, explained",
     dek: "Priya Shah lost a week-six coin flip in the final stat correction. The slide started with a decimal point.",
     teamIds: ["tavern"],
-    reporter: reporters.samir,
     publishedAt: "2026-10-16T21:00:00.000Z",
     readTimeMinutes: 4,
     tags: ["week 6", "recap"],
@@ -508,7 +485,6 @@ export const articles: Article[] = [
     headline: "The waiver wire is a desert. Here is who is still worth a claim.",
     dek: "Three names, one handcuff, and a kicker stream the Bandits should have grabbed on Tuesday.",
     teamIds: ["bandits", "wolves"],
-    reporter: reporters.quinn,
     publishedAt: "2026-10-16T14:00:00.000Z",
     readTimeMinutes: 5,
     tags: ["waivers", "pickups"],
@@ -520,9 +496,13 @@ export const articles: Article[] = [
     headline: "Playoff Pirates circle a wounded Diners squad",
     dek: "Sunday at 4:25, Harper Quinn gets the schedule gift the rest of the contenders have been waiting on.",
     teamIds: ["pirates", "diners"],
-    reporter: reporters.bea,
     publishedAt: "2026-10-16T10:00:00.000Z",
     readTimeMinutes: 4,
     tags: ["preview", "week 7"],
   },
 ];
+
+export const articles: Article[] = articleDrafts.map((article) => ({
+  ...article,
+  reporter: reporterOf(assignPersona(article.kind, article.slug)),
+}));

@@ -14,10 +14,14 @@
     "yahoo:auth": "bun scripts/yahoo-auth.ts",
     "yahoo:sync": "bun scripts/yahoo-sync.ts",
     "recap": "bun scripts/weekly-recap.ts",
+    "podcast": "bun scripts/weekly-podcast.ts",
+    "rankings": "bun scripts/power-rankings.ts",
     "yahoo:get": "bun scripts/yahoo-get.ts",
-    "opinion:write": "bun scripts/write-opinion.ts"
+    "opinion:write": "bun scripts/write-opinion.ts",
+    "images": "bun scripts/article-images.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1153.0",
     "drizzle-orm": "^0.45.4",
     "next": "16.4.2",
     "postgres": "^3.4.9",

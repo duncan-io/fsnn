@@ -1,5 +1,5 @@
 import { YahooClient, type YahooResponse } from "./client";
-import { extractGames, extractLeagues, extractPlayers, extractTeams } from "./extract";
+import { extractGames, extractLeagues, extractPlayers, extractTeams, extractTransactions } from "./extract";
 import { ingest } from "./ingest";
 
 const POOL = 3;
@@ -88,7 +88,11 @@ async function syncLeague(client: YahooClient, leagueKey: string) {
   const league = extractLeagues(metadata.flat)[0];
   const startWeek = league?.startWeek && league.startWeek > 0 ? league.startWeek : 1;
   const currentWeek = league?.currentWeek ?? 0;
-  const weeks = currentWeek >= startWeek ? range(startWeek, currentWeek) : [];
+  const endWeek = league?.endWeek && league.endWeek > 0 ? league.endWeek : currentWeek;
+  const playedThrough = currentWeek >= startWeek ? currentWeek : startWeek - 1;
+  const scheduleThrough = Math.max(playedThrough, endWeek);
+  const playedWeeks = playedThrough >= startWeek ? range(startWeek, playedThrough) : [];
+  const scheduleWeeks = scheduleThrough >= startWeek ? range(startWeek, scheduleThrough) : [];
 
   await fetchIngest(client, `league/${leagueKey}/settings`);
   await fetchIngest(client, `league/${leagueKey}/standings`);
@@ -97,8 +101,7 @@ async function syncLeague(client: YahooClient, leagueKey: string) {
   await fetchIngest(client, `league/${leagueKey}/draftresults`);
 
   const trackedPlayers = new Set<string>();
-  const completed = await fetchIngest(client, `league/${leagueKey}/transactions;count=${TRANSACTION_COUNT}`);
-  for (const key of playerKeys(completed.flat)) trackedPlayers.add(key);
+  await syncCompletedTransactions(client, leagueKey, trackedPlayers);
 
   await mapPool(teamKeys, POOL, async (teamKey) => {
     const pending = await fetchIngest(
@@ -108,18 +111,34 @@ async function syncLeague(client: YahooClient, leagueKey: string) {
     for (const key of playerKeys(pending.flat)) trackedPlayers.add(key);
   });
 
-  await mapPool(weeks, POOL, async (week) => {
+  await mapPool(scheduleWeeks, POOL, async (week) => {
     await fetchIngest(client, `league/${leagueKey}/scoreboard;week=${week}`);
   });
 
-  const rosterJobs = teamKeys.flatMap((teamKey) => weeks.map((week) => ({ teamKey, week })));
+  const rostered = new Map<number, Set<string>>();
+  const rosterJobs = teamKeys.flatMap((teamKey) => playedWeeks.map((week) => ({ teamKey, week })));
   await mapPool(rosterJobs, POOL, async ({ teamKey, week }) => {
     const roster = await fetchIngest(
       client,
       `team/${teamKey}/roster;week=${week}/players;out=player_points`,
     );
-    for (const key of playerKeys(roster.flat)) trackedPlayers.add(key);
+    const keys = playerKeys(roster.flat);
+    for (const key of keys) trackedPlayers.add(key);
+    const bucket = rostered.get(week) ?? new Set<string>();
+    if (!rostered.has(week)) rostered.set(week, bucket);
+    for (const key of keys) bucket.add(key);
   });
+
+  for (const week of playedWeeks) {
+    const keys = [...(rostered.get(week) ?? [])];
+    await mapPool(chunks(keys, PLAYER_PAGE), POOL, async (group) => {
+      if (group.length === 0) return;
+      await fetchIngest(
+        client,
+        `league/${leagueKey}/players;player_keys=${group.join(",")}/stats;type=week;week=${week}`,
+      );
+    });
+  }
 
   await syncFreeAgents(client, leagueKey);
   const missing = [...trackedPlayers];
@@ -130,6 +149,22 @@ async function syncLeague(client: YahooClient, leagueKey: string) {
       `league/${leagueKey}/players;player_keys=${keys.join(",")};out=ownership,percent_owned,stats`,
     );
   });
+}
+
+async function syncCompletedTransactions(client: YahooClient, leagueKey: string, trackedPlayers: Set<string>) {
+  const seen = new Set<string>();
+  for (let page = 0; page < 200; page += 1) {
+    const start = page * TRANSACTION_COUNT;
+    const response = await fetchIngest(
+      client,
+      `league/${leagueKey}/transactions;start=${start};count=${TRANSACTION_COUNT}`,
+    );
+    for (const key of playerKeys(response.flat)) trackedPlayers.add(key);
+    const keys = extractTransactions(response.flat).map((row) => row.transactionKey);
+    const fresh = keys.filter((key) => !seen.has(key));
+    for (const key of keys) seen.add(key);
+    if (fresh.length === 0 || keys.length < TRANSACTION_COUNT) return;
+  }
 }
 
 async function syncFreeAgents(client: YahooClient, leagueKey: string) {

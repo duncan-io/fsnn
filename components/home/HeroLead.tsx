@@ -1,16 +1,28 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { getLeadStories, getLeague, getTeams } from "@/lib/data";
 import { lookupTeams } from "@/lib/format";
+import { EngagementCounts } from "@/components/engagement/EngagementCounts";
 import { ArticleArt } from "@/components/ui/ArticleArt";
 import { KindBadge } from "@/components/ui/KindBadge";
 import { ReporterByline } from "@/components/ui/ReporterByline";
+import { engagementFor, engagementForSlugs } from "@/src/readers/store";
 
-export async function HeroLead() {
+export function HeroLead() {
+  return (
+    <Suspense fallback={<p className="text-sm text-muted">Opening the lead…</p>}>
+      <HeroLeadContent />
+    </Suspense>
+  );
+}
+
+async function HeroLeadContent() {
   const [stories, teams, league] = await Promise.all([
     getLeadStories(),
     getTeams(),
     getLeague(),
   ]);
+  const engagement = await engagementForSlugs(stories.map((article) => article.slug));
   const [lead, ...secondary] = stories;
 
   if (!lead) {
@@ -50,6 +62,13 @@ export async function HeroLead() {
               tone="inverse"
             />
           </div>
+          <div className="mt-2">
+            <EngagementCounts
+              likes={engagementFor(engagement, lead.slug).likes}
+              comments={engagementFor(engagement, lead.slug).comments}
+              inverse
+            />
+          </div>
         </div>
       </Link>
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 lg:gap-4">
@@ -68,6 +87,13 @@ export async function HeroLead() {
                 <p className="mt-1.5 line-clamp-3 font-display text-lg font-extrabold leading-tight group-hover:text-accent">
                   {article.headline}
                 </p>
+                <div className="mt-1">
+                  <EngagementCounts
+                    likes={engagementFor(engagement, article.slug).likes}
+                    comments={engagementFor(engagement, article.slug).comments}
+                    inverse
+                  />
+                </div>
               </div>
             </Link>
           );

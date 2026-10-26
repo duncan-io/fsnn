@@ -144,6 +144,7 @@ export const rosterEntries = pgTable(
     week: integer("week").notNull(),
     playerKey: text("player_key").notNull(),
     selectedPosition: text("selected_position"),
+    weekStats: jsonb("week_stats"),
     raw: jsonb("raw").notNull(),
   },
   (table) => [
@@ -229,6 +230,7 @@ export const articles = pgTable(
     reporterName: text("reporter_name").notNull(),
     reporterBeat: text("reporter_beat").notNull(),
     reporterInitials: text("reporter_initials").notNull(),
+    imageKey: text("image_key"),
     publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
     factSheet: jsonb("fact_sheet").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -267,6 +269,7 @@ export const opinionColumns = pgTable(
     columnistName: text("columnist_name").notNull(),
     columnistBeat: text("columnist_beat").notNull(),
     columnistInitials: text("columnist_initials").notNull(),
+    imageKey: text("image_key"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     publishedAt: timestamp("published_at", { withTimezone: true }),
   },
@@ -274,6 +277,82 @@ export const opinionColumns = pgTable(
     unique("opinion_columns_slug_unique").on(table.slug),
     unique("opinion_columns_league_week_desk_uidx").on(table.leagueKey, table.week, table.desk),
     index("opinion_columns_status_idx").on(table.status),
+  ],
+);
+
+export const readers = pgTable(
+  "readers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    email: text("email").notNull(),
+    displayName: text("display_name").notNull(),
+    displayKey: text("display_key").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("readers_email_unique").on(table.email),
+    unique("readers_display_key_unique").on(table.displayKey),
+  ],
+);
+
+export const readerSessions = pgTable("reader_sessions", {
+  token: text("token").primaryKey(),
+  readerId: uuid("reader_id")
+    .notNull()
+    .references(() => readers.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+export const articleLikes = pgTable(
+  "article_likes",
+  {
+    readerId: uuid("reader_id")
+      .notNull()
+      .references(() => readers.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.readerId, table.slug] }),
+    index("article_likes_slug_idx").on(table.slug),
+  ],
+);
+
+export const articleComments = pgTable(
+  "article_comments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    readerId: uuid("reader_id")
+      .notNull()
+      .references(() => readers.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("article_comments_slug_idx").on(table.slug, table.createdAt)],
+);
+
+export const podcastEpisodes = pgTable(
+  "podcast_episodes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    leagueKey: text("league_key").notNull(),
+    week: integer("week").notNull(),
+    slug: text("slug").notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    script: jsonb("script").notNull(),
+    brief: jsonb("brief").notNull(),
+    audioKey: text("audio_key").notNull(),
+    durationSeconds: integer("duration_seconds").notNull(),
+    audioBytes: integer("audio_bytes").notNull(),
+    hosts: jsonb("hosts").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("podcast_episodes_slug_unique").on(table.slug),
+    unique("podcast_episodes_league_week_uidx").on(table.leagueKey, table.week),
   ],
 );
 

@@ -4,10 +4,13 @@ import { io } from "next/cache";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { articles } from "@/lib/data/fixtures";
-import { getFixtureArticle, getStoredRecap } from "@/lib/data";
+import { getFixtureArticle, getStoredRanking, getStoredRecap } from "@/lib/data";
 import { formatPoints } from "@/lib/format";
 import { pageWidth } from "@/lib/labels";
+import { ArticleEngagement } from "@/components/engagement/ArticleEngagement";
 import { OpinionStory } from "@/components/opinion/OpinionStory";
+import { RankingsColumn } from "@/components/rankings/RankingsColumn";
+import { ArticleLead } from "@/components/ui/ArticleLead";
 import { KindBadge } from "@/components/ui/KindBadge";
 import { ReporterByline } from "@/components/ui/ReporterByline";
 import { RecapColumn } from "@/components/recap/RecapColumn";
@@ -29,6 +32,10 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
+  if (slug.includes("power-rankings")) {
+    const ranking = await getStoredRanking(slug);
+    if (ranking) return { title: ranking.article.headline, description: ranking.article.dek };
+  }
   const stored = await getStoredRecap(slug);
   if (stored) return { title: stored.article.headline };
   if (isOpinionSlug(slug) && process.env.DATABASE_URL) {
@@ -51,6 +58,16 @@ export default function Page({ params }: { params: Promise<{ slug: string }> }) 
 
 async function Story({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  if (slug.includes("power-rankings")) {
+    const ranking = await getStoredRanking(slug);
+    if (ranking) {
+      return (
+        <main className={`${pageWidth} py-8`}>
+          <RankingsColumn article={ranking.article} body={ranking.body} brief={ranking.brief} />
+        </main>
+      );
+    }
+  }
   const stored = await getStoredRecap(slug);
   if (stored) return <StoredStory recap={stored} />;
   if (isOpinionSlug(slug) && process.env.DATABASE_URL) {
@@ -76,6 +93,7 @@ async function Story({ params }: { params: Promise<{ slug: string }> }) {
             readTimeMinutes={fixture.article.readTimeMinutes}
           />
         </div>
+        <ArticleEngagement slug={fixture.article.slug} />
       </article>
     </main>
   );
@@ -100,6 +118,7 @@ function StoredStory({ recap }: { recap: StoredRecap }) {
   return (
     <main className={`${pageWidth} py-8`}>
       <article className="max-w-2xl">
+        <ArticleLead src={recap.article.imageUrl} />
         <KindBadge kind={recap.article.kind} />
         <h1 className="mt-3 font-display text-4xl font-extrabold leading-none tracking-tight sm:text-5xl">
           {recap.article.headline}
@@ -124,6 +143,7 @@ function StoredStory({ recap }: { recap: StoredRecap }) {
             Read the full week
           </Link>
         </p>
+        <ArticleEngagement slug={recap.article.slug} />
       </article>
     </main>
   );

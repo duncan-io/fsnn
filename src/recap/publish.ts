@@ -1,11 +1,16 @@
 import { getDb } from "../db/client";
 import { articles } from "../db/schema";
+import type { Persona } from "../personas/staff";
 import { recapSlug } from "./slug";
-import { RECAP_REPORTER, type RecapBody, type RecapDraft, type WeekBrief } from "./types";
+import type { RecapBody, RecapDraft, WeekBrief } from "./types";
 
-export async function saveRecap(brief: WeekBrief, draft: RecapDraft) {
+export async function saveRecap(
+  brief: WeekBrief,
+  draft: RecapDraft,
+  persona: Persona,
+  publishedAt = new Date(),
+) {
   const db = getDb();
-  const publishedAt = new Date();
   await db.transaction(async (tx) => {
     await upsert(tx, {
       leagueKey: brief.leagueKey,
@@ -23,7 +28,7 @@ export async function saveRecap(brief: WeekBrief, draft: RecapDraft) {
       teamKeys: teamKeys(brief, null),
       publishedAt,
       factSheet: brief,
-    });
+    }, persona);
     for (const card of draft.cards) {
       await upsert(tx, {
         leagueKey: brief.leagueKey,
@@ -37,7 +42,7 @@ export async function saveRecap(brief: WeekBrief, draft: RecapDraft) {
         teamKeys: teamKeys(brief, card.matchupKey),
         publishedAt,
         factSheet: brief,
-      });
+      }, persona);
     }
   });
 }
@@ -59,14 +64,15 @@ async function upsert(
     publishedAt: Date;
     factSheet: WeekBrief;
   },
+  persona: Persona,
 ) {
   await tx
     .insert(articles)
     .values({
       ...row,
-      reporterName: RECAP_REPORTER.name,
-      reporterBeat: RECAP_REPORTER.beat,
-      reporterInitials: RECAP_REPORTER.initials,
+      reporterName: persona.name,
+      reporterBeat: persona.beat,
+      reporterInitials: persona.initials,
     })
     .onConflictDoUpdate({
       target: [articles.leagueKey, articles.week, articles.scope, articles.matchupKey],
@@ -77,6 +83,7 @@ async function upsert(
         body: row.body,
         teamKeys: row.teamKeys,
         factSheet: row.factSheet,
+        publishedAt: row.publishedAt,
         updatedAt: new Date(),
       },
     });

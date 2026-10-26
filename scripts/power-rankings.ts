@@ -1,0 +1,51 @@
+/**
+ * Publish the weekly power rankings.
+ *
+ * Railway cron: Wednesdays at 10:00 America/New_York.
+ * Command: bun run rankings
+ *
+ * bun run rankings --week 6 backfills that week.
+ */
+import { generateRankings } from "../src/backfill/week";
+import { closeDb } from "../src/db/client";
+import { latestCompletedWeek, listRecapLeagues } from "../src/recap/load";
+import { syncCurrentNfl } from "../src/yahoo/sync";
+
+function requestedWeek(argv: string[]): number | undefined {
+  const index = argv.indexOf("--week");
+  if (index === -1) return undefined;
+  const value = Number(argv[index + 1]);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error("Pass --week as a positive integer, for example --week 6.");
+  }
+  return value;
+}
+
+try {
+  const week = requestedWeek(process.argv);
+  await syncCurrentNfl();
+  const leagues = await listRecapLeagues();
+  if (leagues.length === 0) console.log("No leagues to rank.");
+  let published = 0;
+  for (const league of leagues) {
+    const label = league.name ?? league.leagueKey;
+    const target = week ?? (await latestCompletedWeek(league.leagueKey));
+    if (target == null) {
+      console.log(`${label}: no completed week.`);
+      continue;
+    }
+    const message = await generateRankings(league.leagueKey, target);
+    if (!message) {
+      console.log(`${label}: week ${target} is not final.`);
+      continue;
+    }
+    published += 1;
+    console.log(message);
+  }
+  if (leagues.length > 0 && published === 0) console.log("No power rankings published.");
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error);
+  process.exitCode = 1;
+} finally {
+  await closeDb();
+}

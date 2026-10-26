@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
+import { adminReturnUrl } from "@/lib/admin/status";
 import { adminPassword, isAdminSession, sameSecret, takeOAuthState } from "@/lib/admin/session";
 import { exchangeYahooToken, redirectUri, saveYahooToken } from "@/src/yahoo/client";
 
-function back(request: Request, params: Record<string, string>) {
-  const url = new URL("/admin", request.url);
-  for (const [key, value] of Object.entries(params)) {
-    if (value) url.searchParams.set(key, value);
-  }
-  return NextResponse.redirect(url);
+function back(params: Record<string, string>) {
+  // Yahoo returns to YAHOO_REDIRECT_URI. Use that origin so the browser lands on
+  // the public host instead of the process bind address.
+  return NextResponse.redirect(adminReturnUrl(redirectUri(), params));
 }
 
 export async function GET(request: Request) {
@@ -18,13 +17,13 @@ export async function GET(request: Request) {
   const expected = await takeOAuthState();
 
   if (!adminPassword() || !(await isAdminSession())) {
-    return back(request, { error: "session" });
+    return back({ error: "session" });
   }
   if (failure || !code || !sameSecret(expected, state)) {
     const detail = failure
       ? `Yahoo authorization failed: ${failure}`
       : "Invalid Yahoo authorization response.";
-    return back(request, { error: "yahoo", detail: detail.slice(0, 240) });
+    return back({ error: "yahoo", detail: detail.slice(0, 240) });
   }
 
   try {
@@ -36,8 +35,8 @@ export async function GET(request: Request) {
     await saveYahooToken(token);
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Yahoo token exchange failed.";
-    return back(request, { error: "yahoo", detail: detail.slice(0, 240) });
+    return back({ error: "yahoo", detail: detail.slice(0, 240) });
   }
 
-  return back(request, { notice: "connected" });
+  return back({ notice: "connected" });
 }

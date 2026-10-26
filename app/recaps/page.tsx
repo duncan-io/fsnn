@@ -4,6 +4,7 @@ import { getWeeklyRecaps } from "@/lib/data";
 import { pageWidth } from "@/lib/labels";
 import { ArticleCard } from "@/components/ui/ArticleCard";
 import { RecapColumn } from "@/components/recap/RecapColumn";
+import { engagementFor, engagementForSlugs } from "@/src/readers/store";
 
 export const metadata: Metadata = {
   title: "Recaps",
@@ -30,6 +31,9 @@ export default function RecapsPage() {
 
 async function RecapsContent() {
   const packages = await getWeeklyRecaps();
+  const engagement = await engagementForSlugs(
+    packages.flatMap((item) => item.cards.map((article) => article.slug)),
+  );
 
   return (
     <main className={`${pageWidth} py-8`}>
@@ -49,7 +53,13 @@ async function RecapsContent() {
               {item.cards.length > 0 ? (
                 <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                   {item.cards.map((article) => (
-                    <ArticleCard key={article.id} article={article} teams={item.teams} variant="md" />
+                    <ArticleCard
+                      key={article.id}
+                      article={article}
+                      teams={item.teams}
+                      variant="md"
+                      engagement={engagementFor(engagement, article.slug)}
+                    />
                   ))}
                 </div>
               ) : null}

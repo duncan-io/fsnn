@@ -4,6 +4,7 @@ import {
   connectYahoo,
   discardColumn,
   disconnectYahoo,
+  generateBackfillWeek,
   login,
   logout,
   publishColumn,
@@ -12,14 +13,22 @@ import {
   writeWaiverColumn,
 } from "@/app/admin/actions";
 import { adminPassword, isAdminSession } from "@/lib/admin/session";
-import { loadAdminDashboard, publicError, type YahooConnectionStatus } from "@/lib/admin/status";
-import { listReviewColumns, type OpinionColumnView } from "@/src/opinion/store";
+import {
+  loadAdminDashboard,
+  loadBackfillWeeks,
+  publicError,
+  type BackfillWeek,
+  type YahooConnectionStatus,
+} from "@/lib/admin/status";
+import { listReviewColumns, resolveLeague, type OpinionColumnView } from "@/src/opinion/store";
 import { formatAbsoluteTime } from "@/lib/format";
 import { pageWidth } from "@/lib/labels";
 
 export const metadata = {
   title: "Admin",
 };
+
+export const maxDuration = 800;
 
 type AdminSearch = {
   error?: string | string[];
@@ -47,7 +56,9 @@ function flashMessage(params: AdminSearch) {
   if (error === "sync") return { ok: false, text: detail || "Sync failed." };
   if (error === "connect") return { ok: false, text: detail || "Could not start the Yahoo connection." };
   if (error === "column") return { ok: false, text: detail || "Could not write the column." };
+  if (error === "backfill") return { ok: false, text: detail || "Could not generate that week." };
   if (notice === "column") return { ok: true, text: detail || "Column saved." };
+  if (notice === "backfill") return { ok: true, text: detail || "Week generated." };
   if (notice === "published") return { ok: true, text: "Column published." };
   if (notice === "discarded") return { ok: true, text: "Column discarded." };
   if (notice === "connected") return { ok: true, text: "Yahoo is connected." };
@@ -196,12 +207,22 @@ async function AdminPanel({ searchParams }: { searchParams: Promise<AdminSearch>
   const { settings } = dashboard;
   let columns: OpinionColumnView[] = [];
   let columnsError: string | null = null;
+  let backfill: BackfillWeek[] = [];
+  let backfillError: string | null = null;
   if (settings.database.ok) {
     try {
       columns = await listReviewColumns();
     } catch (error) {
       columnsError = publicError(error);
     }
+    try {
+      const league = await resolveLeague();
+      backfill = await loadBackfillWeeks(league.leagueKey);
+    } catch (error) {
+      backfillError = publicError(error);
+    }
+  } else {
+    backfillError = settings.database.message;
   }
 
   return (
@@ -247,6 +268,11 @@ async function AdminPanel({ searchParams }: { searchParams: Promise<AdminSearch>
       <ColumnsSection
         columns={columns}
         columnsError={columnsError}
+        canWrite={settings.database.ok && settings.minimaxKey}
+      />
+      <BackfillSection
+        weeks={backfill}
+        error={backfillError}
         canWrite={settings.database.ok && settings.minimaxKey}
       />
     </main>
@@ -316,6 +342,67 @@ function ColumnsSection({
       </div>
     </section>
   );
+}
+
+function BackfillSection({
+  weeks,
+  error,
+  canWrite,
+}: {
+  weeks: BackfillWeek[];
+  error: string | null;
+  canWrite: boolean;
+}) {
+  return (
+    <section className="mt-6 border border-line bg-surface p-5" aria-labelledby="backfill-heading">
+      <h2 id="backfill-heading" className="font-display text-2xl font-extrabold uppercase tracking-wide">
+        Backfill
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm text-muted">
+        Sync Yahoo first so the full transaction history is stored. Then generate one week as it stood then: the recap,
+        power rankings, and both columns. Each piece is dated to that week&apos;s normal slot. Generating again
+        overwrites that week.
+      </p>
+      {error ? <p className="mt-4 text-sm text-down">{error}</p> : null}
+      {!error && weeks.length === 0 ? <p className="mt-6 text-sm text-muted">No completed weeks yet.</p> : null}
+      <div className="mt-2">
+        {weeks.map((week) => {
+          const ready = week.recap || week.rankings || week.results || week.waivers;
+          return (
+            <div
+              key={week.week}
+              className="flex flex-wrap items-center justify-between gap-3 border-b border-line py-3 last:border-b-0"
+            >
+              <div>
+                <p className="font-display text-sm font-bold uppercase tracking-wide">Week {week.week}</p>
+                <p className="mt-1 text-sm text-muted">
+                  {pieceState(week.recap, "Recap")} · {pieceState(week.rankings, "Rankings")} ·{" "}
+                  {pieceState(week.results, "Results")} · {pieceState(week.waivers, "Waivers")}
+                </p>
+                {week.previousRankings ? null : (
+                  <p className="mt-1 text-sm text-muted">
+                    Week {week.week - 1} has no rankings yet, so movement has nothing to compare.
+                  </p>
+                )}
+              </div>
+              <form action={generateBackfillWeek}>
+                <input type="hidden" name="week" value={week.week} />
+                <PendingButton
+                  idle={ready ? `Regenerate week ${week.week}` : `Generate week ${week.week}`}
+                  pending="Writing…"
+                  disabled={!canWrite}
+                />
+              </form>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function pieceState(ready: boolean, label: string) {
+  return `${label} ${ready ? "ready" : "missing"}`;
 }
 
 export default function AdminPage({ searchParams }: { searchParams: Promise<AdminSearch> }) {

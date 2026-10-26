@@ -129,7 +129,7 @@ function faabAngles(adds: WaiverAdd[]): Angle[] {
       const production =
         add.seasonPoints == null
           ? `${add.playerName} does not have season points in the sync yet.`
-          : `${add.playerName} has scored ${formatStat(add.seasonPoints)} fantasy points this season.`;
+          : `${add.playerName} has scored ${formatStat(add.seasonPoints)} points this season.`;
       return {
         angleId: "faab-add",
         claim: `${add.teamName} spent ${add.bid} FAAB on ${add.playerName}, the kind of bid that has to show up.`,

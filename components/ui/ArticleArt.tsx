@@ -1,5 +1,5 @@
-import Image from "next/image";
 import type { Article, Team } from "@/lib/types";
+import { BucketImage } from "@/components/ui/BucketImage";
 
 type ArticleArtProps = {
   article: Article;
@@ -23,13 +23,7 @@ export function ArticleArt({
     <div className={`relative h-full w-full overflow-hidden bg-surface ${className ?? ""}`}>
       <div className="absolute inset-0 transition-transform duration-500 group-hover:scale-105">
         {article.imageUrl ? (
-          <Image
-            src={article.imageUrl}
-            alt=""
-            fill
-            sizes="(min-width: 1024px) 60vw, 100vw"
-            className="object-cover"
-          />
+          <BucketImage src={article.imageUrl} />
         ) : (
           <div
             className="absolute inset-0"

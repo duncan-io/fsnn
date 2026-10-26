@@ -271,17 +271,39 @@ function seasonStatsOf(player: Record<string, unknown>) {
   if (coverage && coverage !== "season") {
     return { hasSeasonStats: false, seasonStats: null, seasonPoints: null };
   }
-  const rows = asArray(stats.stats).flatMap((stat) => {
-    const source = isRecord(stat) && isRecord(stat.stat) ? stat.stat : stat;
-    if (!isRecord(source) || int(source.stat_id) == null) return [];
-    return [{ statId: int(source.stat_id), value: str(source.value) }];
-  });
+  const rows = statRows(stats);
   const points = isRecord(player.player_points) ? numString(player.player_points.total) : null;
   return {
     hasSeasonStats: rows.length > 0 || points != null,
     seasonStats: rows.length > 0 ? rows : null,
     seasonPoints: points,
   };
+}
+
+export type WeekStatRecord = {
+  playerKey: string;
+  stats: Array<{ statId: number; value: string | null }>;
+};
+
+export function extractWeekStats(flat: unknown): WeekStatRecord[] {
+  const byKey = new Map<string, WeekStatRecord>();
+  for (const record of collect(flat, (item) => typeof item.player_key === "string")) {
+    const playerKey = str(record.player_key);
+    if (!playerKey || !isRecord(record.player_stats)) continue;
+    if (str(record.player_stats.coverage_type) !== "week") continue;
+    const rows = statRows(record.player_stats);
+    if (rows.length === 0) continue;
+    byKey.set(playerKey, { playerKey, stats: rows });
+  }
+  return [...byKey.values()];
+}
+
+function statRows(stats: Record<string, unknown>) {
+  return asArray(stats.stats).flatMap((stat) => {
+    const source = isRecord(stat) && isRecord(stat.stat) ? stat.stat : stat;
+    if (!isRecord(source) || int(source.stat_id) == null) return [];
+    return [{ statId: int(source.stat_id) as number, value: str(source.value) }];
+  });
 }
 
 export function extractGames(flat: unknown): GameRecord[] {

@@ -6,10 +6,9 @@
  *
  * bun run recap --week 6 backfills that week.
  */
+import { generateRecap } from "../src/backfill/week";
 import { closeDb } from "../src/db/client";
-import { latestCompletedWeek, listRecapLeagues, loadWeekBrief } from "../src/recap/load";
-import { saveRecap } from "../src/recap/publish";
-import { writeRecap } from "../src/recap/write";
+import { latestCompletedWeek, listRecapLeagues } from "../src/recap/load";
 import { syncCurrentNfl } from "../src/yahoo/sync";
 
 function requestedWeek(argv: string[]): number | undefined {
@@ -37,15 +36,13 @@ try {
       console.log(`${label}: no completed week.`);
       continue;
     }
-    const brief = await loadWeekBrief(league.leagueKey, target);
-    if (!brief) {
+    const message = await generateRecap(league.leagueKey, target);
+    if (!message) {
       console.log(`${label}: week ${target} is not final.`);
       continue;
     }
-    const draft = await writeRecap(brief);
-    await saveRecap(brief, draft);
     published += 1;
-    console.log(`Published week ${target} for ${brief.leagueName}.`);
+    console.log(message);
   }
   if (leagues.length > 0 && published === 0) console.log("No recap published.");
 } catch (error) {

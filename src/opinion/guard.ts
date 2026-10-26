@@ -1,3 +1,17 @@
+import {
+  collectNameTokens,
+  collectNumbers,
+  nameErrors,
+  numberErrors,
+  ordinaryWords,
+  pointTotalErrors,
+  rankErrors,
+  resultErrors,
+  type PlayerPoints,
+  type RankFact,
+  type ResultFact,
+} from "../facts/claims";
+
 const NUMBER = /\d+(?:\.\d+)?/g;
 
 export type BriefCopy = {
@@ -32,4 +46,25 @@ export function unexpectedNumbers(prose: string, brief: string): string[] {
 
 function numbersIn(text: string): string[] {
   return text.match(NUMBER) ?? [];
+}
+
+export function reviewOpinion(
+  prose: string,
+  corpus: string,
+  notes: string[],
+  facts: { results: ResultFact[]; ranks: RankFact[]; players: PlayerPoints[] },
+): string[] {
+  const allowed = collectNumbers(corpus);
+  const names = collectNameTokens(corpus);
+  for (const note of notes) {
+    collectNumbers(note, allowed);
+    collectNameTokens(note, names);
+  }
+  return [
+    ...numberErrors(prose, allowed),
+    ...nameErrors(prose, names, ordinaryWords()),
+    ...resultErrors(prose, facts.results),
+    ...rankErrors(prose, facts.ranks),
+    ...pointTotalErrors(prose, facts.players),
+  ];
 }

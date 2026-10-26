@@ -1,6 +1,8 @@
+import { ArticleEngagement } from "@/components/engagement/ArticleEngagement";
 import type { Article, Team } from "@/lib/types";
 import type { RecapBody } from "@/src/recap/types";
 import { matchupAnchor } from "@/src/recap/slug";
+import { ArticleLead } from "@/components/ui/ArticleLead";
 import { KindBadge } from "@/components/ui/KindBadge";
 import { ReporterByline } from "@/components/ui/ReporterByline";
 
@@ -15,6 +17,7 @@ export function RecapColumn({ article, body, teams }: RecapColumnProps) {
 
   return (
     <article>
+      <ArticleLead src={article.imageUrl} />
       <KindBadge kind={article.kind} />
       <h1 className="mt-3 max-w-3xl font-display text-4xl font-extrabold leading-none tracking-tight sm:text-5xl">
         {article.headline}
@@ -42,6 +45,7 @@ export function RecapColumn({ article, body, teams }: RecapColumnProps) {
         ))}
         {body.kicker ? <p className="border-t border-line pt-6">{body.kicker}</p> : null}
       </div>
+      <ArticleEngagement slug={article.slug} />
     </article>
   );
 }
