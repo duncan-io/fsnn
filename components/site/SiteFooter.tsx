@@ -10,7 +10,7 @@ export async function SiteFooter() {
     <footer className="mt-12 border-t border-line bg-black">
       <div className={`${pageWidth} grid gap-8 py-10 sm:grid-cols-2 lg:grid-cols-4`}>
         <div>
-          <p className="font-display text-3xl font-extrabold tracking-wide">FSNN</p>
+          <img src="/logo.png" alt="FSNN" width={835} height={220} className="h-14 w-auto" />
           <p className="mt-2 max-w-xs text-sm leading-6 text-muted">
             Weekly recaps, breaking news, and manager interviews from {league.name},{" "}
             {league.season}. Desk copy is produced by the FSNN newsroom from the league&apos;s

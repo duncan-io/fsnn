@@ -7,18 +7,14 @@ import { SiteNav } from "@/components/site/SiteNav";
 
 function Wordmark() {
   return (
-    <Link href="/" className="flex shrink-0 items-center gap-2.5">
-      <span className="grid h-9 w-9 place-items-center bg-accent font-display text-lg font-extrabold text-black">
-        FS
-      </span>
-      <span className="leading-none">
-        <span className="block font-display text-2xl font-extrabold tracking-wide">
-          FSNN
-        </span>
-        <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
-          Fantasy Sports News
-        </span>
-      </span>
+    <Link href="/" className="flex shrink-0 items-center">
+      <img
+        src="/logo.png"
+        alt="FSNN — Fantasy Sports News Network"
+        width={835}
+        height={220}
+        className="h-10 w-auto"
+      />
     </Link>
   );
 }
