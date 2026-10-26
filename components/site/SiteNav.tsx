@@ -1,17 +1,32 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { navLinks } from "@/lib/nav";
 
 export function SiteNav({ className }: { className?: string }) {
-  const pathname = usePathname();
+  return (
+    <Suspense fallback={<NavLinks className={className} pathname={null} />}>
+      <ActiveNav className={className} />
+    </Suspense>
+  );
+}
 
+function ActiveNav({ className }: { className?: string }) {
+  const pathname = usePathname();
+  return <NavLinks className={className} pathname={pathname} />;
+}
+
+function NavLinks({ className, pathname }: { className?: string; pathname: string | null }) {
   return (
     <nav className={className} aria-label="Sections">
       {navLinks.map((link) => {
-        const active =
-          link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+        const active = pathname
+          ? link.href === "/"
+            ? pathname === "/"
+            : pathname.startsWith(link.href)
+          : false;
 
         return (
           <Link
