@@ -8,7 +8,7 @@ export async function saveRankings(
   brief: RankingsBrief,
   draft: RankingsDraft,
   persona: Persona,
-  publishedAt = new Date(),
+  release: { status: "published" | "needs-edit"; publishedAt: Date | null; reviewNotes: string[] | null },
 ) {
   const db = getDb();
   const body: RankingsBody = {
@@ -31,7 +31,9 @@ export async function saveRankings(
       reporterName: persona.name,
       reporterBeat: persona.beat,
       reporterInitials: persona.initials,
-      publishedAt,
+      publishedAt: release.publishedAt,
+      status: release.status,
+      reviewNotes: release.reviewNotes,
       factSheet: brief,
     })
     .onConflictDoUpdate({
@@ -43,7 +45,9 @@ export async function saveRankings(
         body,
         teamKeys: brief.teams.map((team) => team.teamKey),
         factSheet: brief,
-        publishedAt,
+        publishedAt: release.publishedAt,
+        status: release.status,
+        reviewNotes: release.reviewNotes,
         updatedAt: new Date(),
       },
     });

@@ -1,3 +1,4 @@
+import { draftUntil, RANKINGS_GOAL, reviewWithOpenAi } from "../desk/review";
 import type { Persona } from "../personas/staff";
 import type { LookupPlayer } from "../search/lookup";
 import { openAiJsonDraft } from "../search/openai";
@@ -29,28 +30,42 @@ const RANKINGS_SCHEMA = {
   },
 } as const;
 
+export type WrittenRankings =
+  | { ok: true; draft: RankingsDraft }
+  | { ok: false; draft: RankingsDraft; notes: string[] };
+
 export async function writeRankings(
   brief: RankingsBrief,
   persona: Persona,
   complete: typeof fetch = fetch,
-): Promise<RankingsDraft> {
-  const errors: string[] = [];
-  let last = "Rankings draft failed validation.";
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    let draft: { draft: RankingsDraft; snippets: string[] };
-    try {
-      draft = await requestDraft(brief, persona, errors, complete);
-    } catch (error) {
-      last = error instanceof Error ? error.message : "Rankings draft could not be read.";
-      errors.splice(0, errors.length, last);
-      continue;
-    }
-    const result = validateRankings(brief, draft.draft, draft.snippets);
-    if (result.ok) return draft.draft;
-    last = result.errors.join("\n");
-    errors.splice(0, errors.length, ...result.errors);
-  }
-  throw new Error(last);
+): Promise<WrittenRankings> {
+  const result = await draftUntil({
+    write: (notes) => requestDraft(brief, persona, notes, complete),
+    facts: (drafted) => {
+      const checked = validateRankings(brief, drafted.draft, drafted.snippets);
+      return checked.ok ? [] : checked.errors;
+    },
+    edit: (drafted) =>
+      reviewWithOpenAi({
+        goal: RANKINGS_GOAL,
+        brief: JSON.stringify(brief),
+        copy: rankingsCopy(drafted.draft),
+        complete,
+      }),
+  });
+  return result.ok
+    ? { ok: true, draft: result.draft.draft }
+    : { ok: false, draft: result.draft.draft, notes: result.notes };
+}
+
+function rankingsCopy(draft: RankingsDraft): string {
+  return [
+    draft.headline,
+    draft.dek,
+    draft.lede,
+    draft.kicker ?? "",
+    ...draft.entries.flatMap((entry) => entry.paragraphs),
+  ].join("\n");
 }
 
 async function requestDraft(

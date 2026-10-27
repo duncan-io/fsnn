@@ -1,3 +1,4 @@
+import { draftUntil, RECAP_GOAL, reviewWithOpenAi } from "../desk/review";
 import type { Persona } from "../personas/staff";
 import { openAiJsonDraft } from "../search/openai";
 import type { LookupPlayer } from "../search/lookup";
@@ -50,28 +51,41 @@ const RECAP_SCHEMA = {
   },
 } as const;
 
+export type WrittenRecap = { ok: true; draft: RecapDraft } | { ok: false; draft: RecapDraft; notes: string[] };
+
 export async function writeRecap(
   brief: WeekBrief,
   persona: Persona,
   complete: typeof fetch = fetch,
-): Promise<RecapDraft> {
-  const errors: string[] = [];
-  let last = "Recap draft failed validation.";
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    let draft: { draft: RecapDraft; snippets: string[] };
-    try {
-      draft = await requestDraft(brief, persona, errors, complete);
-    } catch (error) {
-      last = error instanceof Error ? error.message : "Recap draft could not be read.";
-      errors.splice(0, errors.length, last);
-      continue;
-    }
-    const result = validateRecap(brief, draft.draft, draft.snippets);
-    if (result.ok) return draft.draft;
-    last = result.errors.join("\n");
-    errors.splice(0, errors.length, ...result.errors);
-  }
-  throw new Error(last);
+): Promise<WrittenRecap> {
+  const result = await draftUntil({
+    write: (notes) => requestDraft(brief, persona, notes, complete),
+    facts: (drafted) => {
+      const checked = validateRecap(brief, drafted.draft, drafted.snippets);
+      return checked.ok ? [] : checked.errors;
+    },
+    edit: (drafted) =>
+      reviewWithOpenAi({
+        goal: RECAP_GOAL,
+        brief: JSON.stringify(brief),
+        copy: recapCopy(drafted.draft),
+        complete,
+      }),
+  });
+  return result.ok
+    ? { ok: true, draft: result.draft.draft }
+    : { ok: false, draft: result.draft.draft, notes: result.notes };
+}
+
+function recapCopy(draft: RecapDraft): string {
+  return [
+    draft.column.headline,
+    draft.column.dek,
+    draft.column.lede,
+    ...draft.column.sections.flatMap((section) => [section.heading, ...section.paragraphs]),
+    draft.column.kicker ?? "",
+    ...draft.cards.flatMap((card) => [card.headline, card.dek]),
+  ].join("\n");
 }
 
 async function requestDraft(

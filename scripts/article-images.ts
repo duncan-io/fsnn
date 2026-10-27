@@ -1,5 +1,5 @@
 /**
- * Illustrate stored recaps and opinion columns that do not have an image yet.
+ * Illustrate stored recaps, opinion columns, and breaking stories that do not have an image yet.
  *
  * bun run images
  */

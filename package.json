@@ -18,6 +18,7 @@
     "rankings": "bun scripts/power-rankings.ts",
     "yahoo:get": "bun scripts/yahoo-get.ts",
     "opinion:write": "bun scripts/write-opinion.ts",
+    "breaking": "bun scripts/write-breaking.ts",
     "images": "bun scripts/article-images.ts"
   },
   "dependencies": {

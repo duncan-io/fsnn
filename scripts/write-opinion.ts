@@ -1,5 +1,5 @@
 /**
- * Write one opinion draft from the synced league tables.
+ * Write and publish one opinion column from the synced league tables.
  *
  *   bun scripts/write-opinion.ts results
  *   bun scripts/write-opinion.ts waivers

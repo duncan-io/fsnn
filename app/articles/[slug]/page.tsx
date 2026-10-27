@@ -8,18 +8,30 @@ import { getFixtureArticle, getStoredRanking, getStoredRecap } from "@/lib/data"
 import { formatPoints } from "@/lib/format";
 import { pageWidth } from "@/lib/labels";
 import { ArticleEngagement } from "@/components/engagement/ArticleEngagement";
-import { OpinionStory } from "@/components/opinion/OpinionStory";
+import { BreakingStoryView } from "@/components/breaking/BreakingStory";
 import { RankingsColumn } from "@/components/rankings/RankingsColumn";
 import { ArticleLead } from "@/components/ui/ArticleLead";
 import { KindBadge } from "@/components/ui/KindBadge";
 import { ReporterByline } from "@/components/ui/ReporterByline";
 import { RecapColumn } from "@/components/recap/RecapColumn";
 import type { StoredRecap } from "@/lib/data/recaps";
+import { OpinionStory } from "@/components/opinion/OpinionStory";
+import { getPublishedBreaking } from "@/src/breaking/store";
 import { getPublishedOpinion } from "@/src/opinion/store";
 import { matchupAnchor } from "@/src/recap/slug";
 
 function isOpinionSlug(slug: string) {
   return slug.endsWith("-results") || slug.endsWith("-waivers");
+}
+
+async function publishedBreaking(slug: string) {
+  if (!process.env.DATABASE_URL) return null;
+  await io();
+  try {
+    return await getPublishedBreaking(slug);
+  } catch {
+    return null;
+  }
 }
 
 export function generateStaticParams() {
@@ -43,6 +55,8 @@ export async function generateMetadata({
     const column = await getPublishedOpinion(slug);
     if (column) return { title: column.headline, description: column.dek };
   }
+  const story = await publishedBreaking(slug);
+  if (story) return { title: story.headline, description: story.dek };
   const fixture = await getFixtureArticle(slug);
   if (fixture) return { title: fixture.article.headline };
   return { title: "Story" };
@@ -75,6 +89,8 @@ async function Story({ params }: { params: Promise<{ slug: string }> }) {
     const column = await getPublishedOpinion(slug);
     if (column) return <OpinionStory column={column} />;
   }
+  const story = await publishedBreaking(slug);
+  if (story) return <BreakingStoryView story={story} />;
   const fixture = await getFixtureArticle(slug);
   if (!fixture) notFound();
 

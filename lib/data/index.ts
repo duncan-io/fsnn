@@ -59,13 +59,6 @@ export async function getCurrentMatchups(): Promise<Matchup[]> {
   return matchups.filter((matchup) => matchup.week === league.currentWeek);
 }
 
-export async function getBreakingNews(): Promise<Article[]> {
-  "use cache";
-  cacheLife("minutes");
-  cacheTag("articles");
-  return articles.filter((article) => article.kind === "breaking").sort(byNewest);
-}
-
 export async function getLeadStories(): Promise<Article[]> {
   "use cache";
   cacheLife("minutes");
@@ -78,7 +71,9 @@ export async function getLatestArticles(): Promise<Article[]> {
   cacheLife("minutes");
   cacheTag("articles");
   const featured = new Set<string>(leadSlugs);
-  return articles.filter((article) => !featured.has(article.slug)).sort(byNewest);
+  return articles
+    .filter((article) => !featured.has(article.slug) && article.kind !== "breaking")
+    .sort(byNewest);
 }
 
 export async function getArticlesByKind(kind: ArticleKind): Promise<Article[]> {

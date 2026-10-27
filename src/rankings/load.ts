@@ -16,7 +16,14 @@ export async function loadRankingsBrief(leagueKey: string, week: number): Promis
   const previousRows = await db
     .select({ factSheet: articles.factSheet })
     .from(articles)
-    .where(and(eq(articles.leagueKey, leagueKey), eq(articles.scope, "power-rankings"), lt(articles.week, week)))
+    .where(
+      and(
+        eq(articles.leagueKey, leagueKey),
+        eq(articles.scope, "power-rankings"),
+        eq(articles.status, "published"),
+        lt(articles.week, week),
+      ),
+    )
     .orderBy(desc(articles.week))
     .limit(1);
   const notes = activityNotes(

@@ -26,14 +26,14 @@ export type PieceResult = {
 export async function generateWeek(leagueKey: string, week: number): Promise<PieceResult[]> {
   return [
     await runPiece("recap", async () => {
-      const message = await generateRecap(leagueKey, week);
-      if (!message) throw new Error(`Week ${week} is not final.`);
-      return "ok";
+      const piece = await generateRecap(leagueKey, week);
+      if (!piece) throw new Error(`Week ${week} is not final.`);
+      return piece.outcome === "needs-edit" ? "needs edit" : "ok";
     }),
     await runPiece("rankings", async () => {
-      const message = await generateRankings(leagueKey, week);
-      if (!message) throw new Error(`Week ${week} is not final.`);
-      return "ok";
+      const piece = await generateRankings(leagueKey, week);
+      if (!piece) throw new Error(`Week ${week} is not final.`);
+      return piece.outcome === "needs-edit" ? "needs edit" : "ok";
     }),
     await runPiece("results", () => generateOpinion(leagueKey, week, "results")),
     await runPiece("waivers", () => generateOpinion(leagueKey, week, "waivers")),
@@ -47,31 +47,59 @@ export function summarizeBackfill(week: number, results: PieceResult[]): string 
   return `Week ${week}: ${parts.join(", ")}`;
 }
 
-export async function generateRecap(leagueKey: string, week: number): Promise<string | null> {
+export type GeneratedPiece = {
+  outcome: "published" | "needs-edit";
+  message: string;
+};
+
+export async function generateRecap(leagueKey: string, week: number): Promise<GeneratedPiece | null> {
   const brief = await loadWeekBrief(leagueKey, week);
   if (!brief) return null;
   if (!brief.weekEnd) throw new Error(`Week ${week} has no end date.`);
   const persona = assignPersona("weekly-recap", `${brief.leagueKey}:${brief.week}:weekly-recap`);
-  const draft = await writeRecap(brief, persona);
-  await saveRecap(brief, draft, persona, slotFor(brief.weekEnd, "recap"));
-  await illustrateRecap(brief, draft);
-  return `Published week ${week} for ${brief.leagueName}.`;
+  const written = await writeRecap(brief, persona);
+  if (!written.ok) {
+    await saveRecap(brief, written.draft, persona, {
+      status: "needs-edit",
+      publishedAt: null,
+      reviewNotes: written.notes,
+    });
+    return { outcome: "needs-edit", message: `Week ${week} recap needs edit for ${brief.leagueName}.` };
+  }
+  await saveRecap(brief, written.draft, persona, {
+    status: "published",
+    publishedAt: slotFor(brief.weekEnd, "recap"),
+    reviewNotes: null,
+  });
+  await illustrateRecap(brief, written.draft);
+  return { outcome: "published", message: `Published week ${week} for ${brief.leagueName}.` };
 }
 
-export async function generateRankings(leagueKey: string, week: number): Promise<string | null> {
+export async function generateRankings(leagueKey: string, week: number): Promise<GeneratedPiece | null> {
   const brief = await loadRankingsBrief(leagueKey, week);
   if (!brief) return null;
-  const publishedAt = slotFor(await weekEndFor(leagueKey, week), "rankings");
   const persona = assignPersona("power-rankings", `${brief.leagueKey}:${brief.week}:power-rankings`);
-  const draft = await writeRankings(brief, persona);
-  await saveRankings(brief, draft, persona, publishedAt);
+  const written = await writeRankings(brief, persona);
+  if (!written.ok) {
+    await saveRankings(brief, written.draft, persona, {
+      status: "needs-edit",
+      publishedAt: null,
+      reviewNotes: written.notes,
+    });
+    return { outcome: "needs-edit", message: `Week ${week} power rankings need edit for ${brief.leagueName}.` };
+  }
+  await saveRankings(brief, written.draft, persona, {
+    status: "published",
+    publishedAt: slotFor(await weekEndFor(leagueKey, week), "rankings"),
+    reviewNotes: null,
+  });
   await illustrateStored({
     kind: "article",
     slug: rankingsSlug(brief.leagueKey, brief.week),
-    headline: draft.headline,
-    dek: draft.dek,
+    headline: written.draft.headline,
+    dek: written.draft.dek,
   });
-  return `Published week ${week} power rankings for ${brief.leagueName}.`;
+  return { outcome: "published", message: `Published week ${week} power rankings for ${brief.leagueName}.` };
 }
 
 async function generateOpinion(leagueKey: string, week: number, desk: OpinionDesk): Promise<string> {
@@ -79,6 +107,7 @@ async function generateOpinion(leagueKey: string, week: number, desk: OpinionDes
   if (league.leagueKey !== leagueKey) throw new Error("Set LEAGUE_KEY to this league before writing columns.");
   const result = await writeOpinion(desk, { week, backfill: true });
   if (result.outcome === "no-angle") return "no angle";
+  if (result.outcome === "needs-edit") return "needs edit";
   return "ok";
 }
 

@@ -231,7 +231,9 @@ export const articles = pgTable(
     reporterBeat: text("reporter_beat").notNull(),
     reporterInitials: text("reporter_initials").notNull(),
     imageKey: text("image_key"),
-    publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    status: text("status").notNull().default("published"),
+    reviewNotes: jsonb("review_notes").$type<string[]>(),
     factSheet: jsonb("fact_sheet").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -241,6 +243,7 @@ export const articles = pgTable(
       .on(table.leagueKey, table.week, table.scope, table.matchupKey)
       .nullsNotDistinct(),
     index("articles_week_idx").on(table.week),
+    index("articles_status_idx").on(table.status),
   ],
 );
 
@@ -270,6 +273,7 @@ export const opinionColumns = pgTable(
     columnistBeat: text("columnist_beat").notNull(),
     columnistInitials: text("columnist_initials").notNull(),
     imageKey: text("image_key"),
+    reviewNotes: jsonb("review_notes").$type<string[]>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     publishedAt: timestamp("published_at", { withTimezone: true }),
   },
@@ -277,6 +281,37 @@ export const opinionColumns = pgTable(
     unique("opinion_columns_slug_unique").on(table.slug),
     unique("opinion_columns_league_week_desk_uidx").on(table.leagueKey, table.week, table.desk),
     index("opinion_columns_status_idx").on(table.status),
+  ],
+);
+
+export const breakingItems = pgTable(
+  "breaking_items",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    leagueKey: text("league_key").notNull(),
+    week: integer("week").notNull(),
+    kind: text("kind").notNull(),
+    sourceKey: text("source_key").notNull(),
+    heat: integer("heat").notNull(),
+    status: text("status").notNull(),
+    slug: text("slug"),
+    headline: text("headline"),
+    dek: text("dek"),
+    body: text("body"),
+    brief: jsonb("brief").$type<{ lines: string[] }>(),
+    teamKeys: jsonb("team_keys").$type<string[]>().notNull(),
+    reporterName: text("reporter_name"),
+    reporterBeat: text("reporter_beat"),
+    reporterInitials: text("reporter_initials"),
+    imageKey: text("image_key"),
+    eventAt: timestamp("event_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+  },
+  (table) => [
+    unique("breaking_items_slug_unique").on(table.slug),
+    unique("breaking_items_league_source_uidx").on(table.leagueKey, table.sourceKey),
+    index("breaking_items_status_idx").on(table.status),
   ],
 );
 

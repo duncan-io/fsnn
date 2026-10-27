@@ -59,7 +59,10 @@ export async function SiteHeader() {
         </div>
       </div>
       <div className="border-t border-line lg:hidden">
-        <SiteNav className={`${pageWidth} no-scrollbar flex gap-5 overflow-x-auto py-2.5`} />
+        <SiteNav
+          mobile
+          className={`${pageWidth} no-scrollbar flex gap-5 overflow-x-auto py-2.5`}
+        />
       </div>
     </header>
   );

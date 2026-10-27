@@ -15,8 +15,10 @@ import {
 import { getDb } from "@/src/db/client";
 import { yahooTokens } from "@/src/db/schema";
 import { redirectUri } from "@/src/yahoo/client";
+import { discardHeldArticle, publishHeldArticle } from "@/src/desk/queue";
 import { discardOpinion, publishOpinion, resolveLeague } from "@/src/opinion/store";
 import type { OpinionDesk } from "@/src/opinion/types";
+import { describeBreaking, writeBreaking } from "@/src/breaking/write";
 import { describeWrite, writeOpinion } from "@/src/opinion/write";
 import { syncCurrentNfl } from "@/src/yahoo/sync";
 
@@ -97,6 +99,21 @@ export async function generateBackfillWeek(formData: FormData) {
   redirect(`/admin?${query.toString()}`);
 }
 
+export async function writeBreakingStory() {
+  await guard();
+  let failed = false;
+  let detail = "";
+  try {
+    detail = describeBreaking(await writeBreaking());
+  } catch (error) {
+    failed = true;
+    detail = publicError(error);
+  }
+  const query = new URLSearchParams({ detail: detail.slice(0, 240) });
+  query.set(failed ? "error" : "notice", "breaking");
+  redirect(`/admin?${query.toString()}`);
+}
+
 export async function writeResultsColumn() {
   await writeDesk("results");
 }
@@ -154,4 +171,40 @@ export async function discardColumn(formData: FormData) {
     redirect(`/admin?${query.toString()}`);
   }
   redirect("/admin?notice=discarded");
+}
+
+export async function publishHeld(formData: FormData) {
+  await guard();
+  const id = String(formData.get("id") ?? "");
+  let detail = "";
+  try {
+    if (!id) throw new Error("Missing piece.");
+    await publishHeldArticle(id);
+  } catch (error) {
+    detail = publicError(error);
+  }
+  if (detail) {
+    const query = new URLSearchParams({ detail: detail.slice(0, 240) });
+    query.set("error", "held");
+    redirect(`/admin?${query.toString()}`);
+  }
+  redirect("/admin?notice=held&detail=Piece+published.");
+}
+
+export async function discardHeld(formData: FormData) {
+  await guard();
+  const id = String(formData.get("id") ?? "");
+  let detail = "";
+  try {
+    if (!id) throw new Error("Missing piece.");
+    await discardHeldArticle(id);
+  } catch (error) {
+    detail = publicError(error);
+  }
+  if (detail) {
+    const query = new URLSearchParams({ detail: detail.slice(0, 240) });
+    query.set("error", "held");
+    redirect(`/admin?${query.toString()}`);
+  }
+  redirect("/admin?notice=held&detail=Piece+discarded.");
 }

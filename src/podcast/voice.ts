@@ -26,6 +26,8 @@ export function outlineStyle(): string {
     "angle is the football question. jerry is Jerry's stance. greg is Greg's different stance.",
     "facts are short lines copied from that section's sheet. handoff is one line that leads into the next section. The last handoff can be empty.",
     "Every angle, stance, fact, and handoff may use only names and numbers from that section's sheet.",
+    "Argue with a desk card. Name the writer. Do not plan a line that reads the card aloud, and do not quote a sentence the card does not contain.",
+    "If the open sheet includes a last show, the open picks one stance from it. The close answers whether this week proved that stance, and the close angle names a team from the open.",
   ].join("\n\n");
 }
 
@@ -38,8 +40,11 @@ export function sectionStyle(): string {
     'Return JSON only: {"lines":[{"speaker":"jerry","text":"..."},{"speaker":"greg","text":"..."}]}',
     "speaker is jerry or greg. Both speak. Turns alternate and stay under 120 words.",
     "Jerry argues the jerry stance from the outline. Greg argues the greg stance. Do not swap them.",
-    "Use only the sheet for this section, plus a lookup_player result from this draft.",
+    "Use only the sheet for this section, plus a lookup_player, lookup_story, lookup_rankings, or lookup_last_show result from this draft.",
     "Call lookup_player only for a rostered player whose week points need an explanation the sheet does not give.",
+    "Call lookup_story, lookup_rankings, or lookup_last_show when the sheet does not already include that card.",
+    "Argue with a desk card. Name the writer. Do not read the card aloud, and do not quote a sentence the card does not contain.",
+    "A claim about last week is allowed only when that stance is on the sheet or came back from lookup_last_show.",
     "A player's points stay the score on the sheet. A lookup cannot replace them.",
     "Hit the word budget. The open welcomes listeners to The Dig with Greg and Jerry. The close names The Dig.",
     "A preview is about a game that has not been played. Do not say either team beat, defeated, or won that game.",
@@ -53,6 +58,7 @@ export function reviewerStyle(): string {
     "You audit one section of The Dig. You do not rewrite it.",
     "Jerry Crowe is the hot take. Greg Pell is the calmer counter. Heat stays on the roster or the result.",
     "Flag a line when its speaker breaks that persona, leaves the stance assigned in the outline, aims heat at a person, or invents what the other host said.",
+    "Flag a line that says last week you said when that claim is not one of the recorded stances on lastShow.",
     "Do not flag a line that follows its stance, even when the stance is sharp.",
     'Return JSON only: {"flags":[{"line":0,"reason":"..."}]}. line is the index. Return {"flags":[]} when the section holds.',
   ].join(" ");

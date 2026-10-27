@@ -40,6 +40,7 @@ export type OpinionColumnView = {
   columnistBeat: string;
   columnistInitials: string;
   imageUrl?: string;
+  reviewNotes: string[];
   createdAt: Date;
   publishedAt: Date | null;
 };
@@ -236,6 +237,7 @@ async function upsertOpinion(values: typeof opinionColumns.$inferInsert) {
         columnistBeat: values.columnistBeat,
         columnistInitials: values.columnistInitials,
         publishedAt: values.publishedAt ?? null,
+        reviewNotes: values.reviewNotes ?? null,
         imageKey: null,
       },
     });
@@ -301,7 +303,7 @@ export async function publishOpinion(id: string) {
   const db = getDb();
   const updated = await db
     .update(opinionColumns)
-    .set({ status: "published", publishedAt: new Date() })
+    .set({ status: "published", publishedAt: new Date(), reviewNotes: null })
     .where(and(eq(opinionColumns.id, id), inArray(opinionColumns.status, ["draft", "needs-edit"])))
     .returning({ id: opinionColumns.id });
   if (updated.length === 0) throw new Error("That column is not waiting for review.");
@@ -337,9 +339,15 @@ function toView(row: typeof opinionColumns.$inferSelect): OpinionColumnView | nu
     columnistBeat: row.columnistBeat,
     columnistInitials: row.columnistInitials,
     imageUrl: mediaPath(row.imageKey),
+    reviewNotes: noteList(row.reviewNotes),
     createdAt: row.createdAt,
     publishedAt: row.publishedAt,
   };
+}
+
+function noteList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
 function asBrief(value: unknown): OpinionBrief | null {

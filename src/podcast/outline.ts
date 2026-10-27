@@ -1,4 +1,4 @@
-import { minimaxJsonDraft } from "../minimax/draft";
+import { minimaxJsonDraft, type DraftTool } from "../minimax/draft";
 import { auditOutline } from "./audit";
 import type { PlannedSegment, PodcastOutline } from "./types";
 import { outlineStyle } from "./voice";
@@ -6,13 +6,13 @@ import { outlineStyle } from "./voice";
 const ATTEMPTS = 3;
 const DRAFT_TOKENS = 3000;
 
-export async function writeOutline(plan: PlannedSegment[], week: number): Promise<PodcastOutline> {
+export async function writeOutline(plan: PlannedSegment[], week: number, tools: DraftTool[] = []): Promise<PodcastOutline> {
   const errors: string[] = [];
   let last = "Outline failed the audit.";
   for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
     let outline: PodcastOutline;
     try {
-      outline = await requestOutline(plan, week, errors);
+      outline = await requestOutline(plan, week, errors, tools);
     } catch (error) {
       last = error instanceof Error ? error.message : "Outline could not be read.";
       errors.splice(0, errors.length, last);
@@ -26,7 +26,7 @@ export async function writeOutline(plan: PlannedSegment[], week: number): Promis
   throw new Error(last);
 }
 
-async function requestOutline(plan: PlannedSegment[], week: number, errors: string[]): Promise<PodcastOutline> {
+async function requestOutline(plan: PlannedSegment[], week: number, errors: string[], tools: DraftTool[]): Promise<PodcastOutline> {
   const correction = errors.length > 0 ? `\n\nFix these problems and return the full JSON again:\n${errors.join("\n")}` : "";
   const sheet = plan.map((segment) => ({
     id: segment.id,
@@ -41,6 +41,7 @@ async function requestOutline(plan: PlannedSegment[], week: number, errors: stri
     week,
     maxTokens: DRAFT_TOKENS,
     temperature: 0.8,
+    tools,
     parse: (value) => readOutline(value),
   });
   return result.value;

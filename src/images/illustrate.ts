@@ -3,7 +3,7 @@ import type { RecapDraft, WeekBrief } from "../recap/types";
 import { generateIllustration } from "../minimax/image";
 import { putJpeg } from "../storage/bucket";
 import { articleImageKey } from "./key";
-import { setArticleImageKey, setOpinionImageKey, type StoredStory } from "./store";
+import { setArticleImageKey, setBreakingImageKey, setOpinionImageKey, type StoredStory } from "./store";
 
 export async function illustrateStored(story: StoredStory): Promise<boolean> {
   try {
@@ -11,7 +11,8 @@ export async function illustrateStored(story: StoredStory): Promise<boolean> {
     const bytes = await generateIllustration(story.headline, story.dek);
     await putJpeg(imageKey, bytes);
     if (story.kind === "article") await setArticleImageKey(story.slug, imageKey);
-    else await setOpinionImageKey(story.slug, imageKey);
+    else if (story.kind === "opinion") await setOpinionImageKey(story.slug, imageKey);
+    else await setBreakingImageKey(story.slug, imageKey);
     console.log(`Illustrated ${story.slug}.`);
     return true;
   } catch (error) {

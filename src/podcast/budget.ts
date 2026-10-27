@@ -2,6 +2,7 @@ import type { PlayerPoints, RankFact, ResultFact } from "../facts/claims";
 import type { TeamFacts } from "../facts/types";
 import type { LookupPlayer } from "../search/lookup";
 import type { BriefMatchup, BriefSide, WeekBrief } from "../recap/types";
+import { EMPTY_DESK, type DeskContext } from "./desk";
 import type { PreviewBrief, PreviewMatchup } from "./preview";
 import { SHOW } from "./show";
 import type { PlannedSegment, SegmentKind } from "./types";
@@ -16,14 +17,14 @@ const WEIGHT: Record<SegmentKind, number> = {
   close: 70,
 };
 
-export function planSegments(recap: WeekBrief, preview: PreviewBrief | null): PlannedSegment[] {
+export function planSegments(recap: WeekBrief, preview: PreviewBrief | null, desk: DeskContext = EMPTY_DESK): PlannedSegment[] {
   const previewWeek = preview?.week ?? null;
   const teams = new Map((preview?.teams ?? []).map((team) => [team.teamKey, team]));
-  const segments: PlannedSegment[] = [openSegment(recap, previewWeek)];
-  for (const matchup of recap.matchups) segments.push(recapSegment(recap, matchup));
-  if (recap.transactions.length > 0) segments.push(wireSegment(recap, previewWeek));
-  for (const matchup of preview?.matchups ?? []) segments.push(previewSegment(recap, previewWeek, matchup, teams));
-  segments.push(closeSegment(recap, previewWeek));
+  const segments: PlannedSegment[] = [openSegment(recap, previewWeek, desk)];
+  for (const matchup of recap.matchups) segments.push(recapSegment(recap, matchup, desk));
+  if (recap.transactions.length > 0) segments.push(wireSegment(recap, previewWeek, desk));
+  for (const matchup of preview?.matchups ?? []) segments.push(previewSegment(recap, previewWeek, matchup, teams, desk));
+  segments.push(closeSegment(recap, previewWeek, desk));
   const budgets = assignBudgets(segments.map((segment) => segment.kind));
   return segments.map((segment, index) => ({ ...segment, budget: budgets[index] ?? 0 }));
 }
@@ -38,25 +39,29 @@ function assignBudgets(kinds: SegmentKind[]): number[] {
   return budgets;
 }
 
-function openSegment(brief: WeekBrief, previewWeek: number | null): PlannedSegment {
-  return base("open", null, leagueFacts(brief, previewWeek), brief);
+function openSegment(brief: WeekBrief, previewWeek: number | null, desk: DeskContext): PlannedSegment {
+  return base("open", null, attach(leagueFacts(brief, previewWeek), desk.lastShow), brief);
 }
 
-function closeSegment(brief: WeekBrief, previewWeek: number | null): PlannedSegment {
-  return base("close", null, leagueFacts(brief, previewWeek), brief);
+function closeSegment(brief: WeekBrief, previewWeek: number | null, desk: DeskContext): PlannedSegment {
+  return base("close", null, attach(leagueFacts(brief, previewWeek), desk.lastShow), brief);
 }
 
-function wireSegment(brief: WeekBrief, previewWeek: number | null): PlannedSegment {
-  return base("wire", null, { ...leagueFacts(brief, previewWeek), transactions: brief.transactions }, brief);
+function wireSegment(brief: WeekBrief, previewWeek: number | null, desk: DeskContext): PlannedSegment {
+  const column = desk.columns.find((card) => card.desk === "waivers") ?? null;
+  return base("wire", null, attach({ ...leagueFacts(brief, previewWeek), transactions: brief.transactions }, column), brief);
 }
 
-function recapSegment(brief: WeekBrief, matchup: BriefMatchup): PlannedSegment {
-  const facts = {
-    show: SHOW.title,
-    leagueName: brief.leagueName,
-    recapWeek: brief.week,
-    matchup,
-  };
+function recapSegment(brief: WeekBrief, matchup: BriefMatchup, desk: DeskContext): PlannedSegment {
+  const facts = attach(
+    {
+      show: SHOW.title,
+      leagueName: brief.leagueName,
+      recapWeek: brief.week,
+      matchup,
+    },
+    desk.recaps.find((card) => card.matchupKey === matchup.matchupKey) ?? null,
+  );
   return {
     id: `recap:${matchup.matchupKey}`,
     kind: "recap",
@@ -82,6 +87,7 @@ function previewSegment(
   previewWeek: number | null,
   matchup: PreviewMatchup,
   teams: Map<string, TeamFacts>,
+  desk: DeskContext,
 ): PlannedSegment {
   const home = teams.get(matchup.home.teamKey) ?? null;
   const away = teams.get(matchup.away.teamKey) ?? null;
@@ -90,15 +96,18 @@ function previewSegment(
     kind: "preview",
     matchupKey: matchup.matchupKey,
     budget: 0,
-    facts: {
-      show: SHOW.title,
-      leagueName: brief.leagueName,
-      recapWeek: brief.week,
-      previewWeek,
-      matchupKey: matchup.matchupKey,
-      home: { teamName: matchup.home.teamName, projectedPoints: matchup.home.projectedPoints, team: home },
-      away: { teamName: matchup.away.teamName, projectedPoints: matchup.away.projectedPoints, team: away },
-    },
+    facts: attach(
+      {
+        show: SHOW.title,
+        leagueName: brief.leagueName,
+        recapWeek: brief.week,
+        previewWeek,
+        matchupKey: matchup.matchupKey,
+        home: { teamName: matchup.home.teamName, projectedPoints: matchup.home.projectedPoints, team: home },
+        away: { teamName: matchup.away.teamName, projectedPoints: matchup.away.projectedPoints, team: away },
+      },
+      previewDesk(matchup.home.teamKey, matchup.away.teamKey, desk),
+    ),
     players: [...playersFromTeam(home), ...playersFromTeam(away)],
     results: [...resultFromTeam(home), ...resultFromTeam(away)],
     ranks: [...rankFromTeam(home), ...rankFromTeam(away)],
@@ -124,6 +133,18 @@ function base(kind: "open" | "wire" | "close", matchupKey: string | null, facts:
     playerPoints: brief.matchups.flatMap((matchup) => [...pointsFromSide(matchup.winner), ...pointsFromSide(matchup.loser)]),
     previewTeams: null,
   };
+}
+
+function attach<T extends object>(facts: T, card: unknown): T & { desk?: unknown } {
+  if (card == null) return facts;
+  return { ...facts, desk: card };
+}
+
+function previewDesk(homeKey: string, awayKey: string, desk: DeskContext) {
+  const rankings = desk.rankings.filter((line) => line.teamKey === homeKey || line.teamKey === awayKey);
+  const column = desk.columns.find((card) => card.teamKeys.includes(homeKey) || card.teamKeys.includes(awayKey)) ?? null;
+  if (rankings.length === 0 && !column) return null;
+  return { rankings, column };
 }
 
 function leagueFacts(brief: WeekBrief, previewWeek: number | null) {

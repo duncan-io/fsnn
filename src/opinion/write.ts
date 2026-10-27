@@ -1,4 +1,5 @@
 import { slotFor } from "../backfill/schedule";
+import { draftUntil, OPINION_GOAL, reviewWithMinimax } from "../desk/review";
 import { illustrateStored } from "../images/illustrate";
 import { minimaxJsonDraft } from "../minimax/draft";
 import { assignPersona, IN_UNIVERSE, type Persona } from "../personas/staff";
@@ -42,7 +43,7 @@ export type WriteOpinionOptions = {
 };
 
 export type WriteOpinionResult =
-  | { outcome: "draft" | "published"; slug: string; headline: string }
+  | { outcome: "draft" | "published" | "needs-edit"; slug: string; headline: string }
   | { outcome: "exists"; slug: string }
   | { outcome: "no-angle" };
 
@@ -67,7 +68,8 @@ export async function writeOpinion(
   if (!angle) return { outcome: "no-angle" };
 
   const dossier = await loadWeekDossier(league.leagueKey, week);
-  if (backfill && !dossier?.weekEnd) throw new Error(`Week ${week} has no end date.`);
+  const weekEnd = dossier?.weekEnd ?? null;
+  if (backfill && !weekEnd) throw new Error(`Week ${week} has no end date.`);
   const slice = (dossier?.teams ?? []).filter((team) => angle.teamKeys.includes(team.teamKey));
   const persona = assignPersona(desk, `${league.leagueKey}:${week}:${desk}`);
   const brief = [
@@ -81,15 +83,15 @@ export async function writeOpinion(
     ...slice.flatMap((team) => teamFactLines(team)),
   ].join("\n");
   const players = lookupPlayers(dossier?.teams ?? []);
-  let drafted = await requestColumn(persona, brief, players, week);
-  let rejected = reviewOpinion(columnProse(drafted.copy), brief, drafted.snippets, opinionFacts(slice));
-  if (rejected.length > 0) {
-    drafted = await requestColumn(persona, brief, players, week, rejected);
-    rejected = reviewOpinion(columnProse(drafted.copy), brief, drafted.snippets, opinionFacts(slice));
-  }
-  if (rejected.length > 0) throw new Error(rejected.join("\n"));
-
-  const copy = drafted.copy;
+  const facts = opinionFacts(slice);
+  const written = await draftUntil({
+    write: (notes) => requestColumn(persona, brief, players, week, notes),
+    facts: (drafted) => reviewOpinion(columnProse(drafted.copy), brief, drafted.snippets, facts),
+    edit: (drafted) => reviewWithMinimax({ goal: OPINION_GOAL, brief, copy: columnProse(drafted.copy) }),
+  });
+  const copy = written.draft.copy;
+  const passed = written.ok;
+  const status = passed ? (backfill ? "published" : "draft") : "needs-edit";
   const slug = slugifyColumn(copy.headline, week, desk);
   const values = {
     slug,
@@ -99,8 +101,9 @@ export async function writeOpinion(
     headline: copy.headline,
     dek: copy.dek,
     body: copy.paragraphs.join("\n\n"),
-    status: backfill ? "published" : "draft",
-    publishedAt: backfill && dossier?.weekEnd ? slotFor(dossier.weekEnd, desk === "waivers" ? "waivers" : "results") : null,
+    status,
+    publishedAt: status === "published" && weekEnd ? slotFor(weekEnd, desk === "waivers" ? "waivers" : "results") : null,
+    reviewNotes: passed ? null : written.notes,
     angleId: angle.angleId,
     brief: {
       claim: angle.claim,
@@ -118,21 +121,24 @@ export async function writeOpinion(
     const row = await findWeekColumn(league.leagueKey, week, desk);
     return { outcome: "exists", slug: row?.slug ?? slug };
   }
-  await illustrateStored({
-    kind: "opinion",
-    slug: saved.slug,
-    headline: copy.headline,
-    dek: copy.dek,
-  });
-  return { outcome: backfill ? "published" : "draft", slug: saved.slug, headline: copy.headline };
+  if (passed) {
+    await illustrateStored({
+      kind: "opinion",
+      slug: saved.slug,
+      headline: copy.headline,
+      dek: copy.dek,
+    });
+  }
+  return { outcome: status, slug: saved.slug, headline: copy.headline };
 }
 
 export function describeWrite(desk: OpinionDesk, result: WriteOpinionResult): string {
   const label = desk === "waivers" ? "waiver" : "results";
   if (result.outcome === "exists") return `This week's ${label} column already exists.`;
   if (result.outcome === "no-angle") return `No ${label} claim cleared the bar this week.`;
-  if (result.outcome === "published") return `Published: ${result.headline}`;
-  return `Draft ready: ${result.headline}`;
+  if (result.outcome === "needs-edit") return `Needs edit: ${result.headline}`;
+  if (result.outcome === "draft") return `Draft ready: ${result.headline}`;
+  return `Published: ${result.headline}`;
 }
 
 async function requestColumn(

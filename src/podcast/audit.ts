@@ -1,7 +1,9 @@
 import {
+  capitalizedWords,
   collectNameTokens,
   collectNumbers,
   nameErrors,
+  normalizeToken,
   numberErrors,
   ordinaryWords,
   pointTotalErrors,
@@ -59,6 +61,7 @@ export function auditOutline(plan: PlannedSegment[], outline: PodcastOutline): A
   for (const section of outline.sections) {
     if (section.id !== last && !section.handoff.trim()) errors.push(`Section ${section.id} needs a handoff.`);
   }
+  errors.push(...payoffErrors(plan, outline));
   return errors.length === 0 ? { ok: true } : { ok: false, errors };
 }
 
@@ -95,6 +98,9 @@ export function auditSection(segment: PlannedSegment, script: ScriptSegment, not
   }
   if (segment.kind === "preview" && segment.previewTeams) {
     errors.push(...spoilerErrors(copy, segment.previewTeams));
+  }
+  if (/\blast week\b/i.test(copy) && !hasLastShow(segment.facts) && !notes.some((note) => note.includes("Last show week"))) {
+    errors.push("Last week is not on the sheet.");
   }
   return errors.length === 0 ? { ok: true } : { ok: false, errors };
 }
@@ -140,6 +146,7 @@ export async function reviewPersonas(
   segment: ScriptSegment,
   section: OutlineSection,
   turn: typeof completeTurn = completeTurn,
+  lastShow: unknown = null,
 ): Promise<string[]> {
   const result = await turn(
     [
@@ -149,6 +156,7 @@ export async function reviewPersonas(
         content: JSON.stringify({
           voices: { jerry: personas.jerry.voice, greg: personas.greg.voice },
           stance: { jerry: section.jerry, greg: section.greg },
+          lastShow,
           lines: segment.lines,
         }),
       },
@@ -176,6 +184,31 @@ export function readFlags(value: unknown): string[] {
     const where = typeof line === "number" ? `Line ${line}: ` : "";
     return [`${where}${reason.trim()}`];
   });
+}
+
+function payoffErrors(plan: PlannedSegment[], outline: PodcastOutline): string[] {
+  const openPlan = plan.find((segment) => segment.id === "open");
+  const open = outline.sections.find((section) => section.id === "open");
+  const close = outline.sections.find((section) => section.id === "close");
+  if (!openPlan || !open || !close || !hasLastShow(openPlan.facts)) return [];
+  const tokens = new Set<string>();
+  for (const word of capitalizedWords(`${open.angle}\n${open.jerry}\n${open.greg}`)) {
+    const token = normalizeToken(word);
+    if (!token || ORDINARY.has(token) || HOST_NAMES.includes(token)) continue;
+    tokens.add(token);
+  }
+  if (tokens.size === 0) return [];
+  const angle = close.angle.toLowerCase();
+  for (const token of tokens) {
+    if (angle.includes(token)) return [];
+  }
+  return ["The close has to answer the open."];
+}
+
+function hasLastShow(facts: unknown): boolean {
+  if (!facts || typeof facts !== "object" || !("desk" in facts)) return false;
+  const desk = (facts as { desk: unknown }).desk;
+  return !!desk && typeof desk === "object" && Array.isArray((desk as { sections?: unknown }).sections);
 }
 
 function allowedNames(value: unknown): Set<string> {

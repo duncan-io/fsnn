@@ -141,7 +141,13 @@ export async function loadBackfillWeeks(leagueKey: string): Promise<BackfillWeek
     db
       .select({ week: articles.week, scope: articles.scope })
       .from(articles)
-      .where(and(eq(articles.leagueKey, leagueKey), inArray(articles.scope, ["league", "power-rankings"]))),
+      .where(
+        and(
+          eq(articles.leagueKey, leagueKey),
+          inArray(articles.scope, ["league", "power-rankings"]),
+          eq(articles.status, "published"),
+        ),
+      ),
     db
       .select({ week: opinionColumns.week, desk: opinionColumns.desk, status: opinionColumns.status })
       .from(opinionColumns)

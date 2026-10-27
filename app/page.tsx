@@ -15,7 +15,9 @@ export default function HomePage() {
   return (
     <main>
       <ScoreTicker />
-      <BreakingBanner />
+      <Suspense fallback={null}>
+        <BreakingBanner />
+      </Suspense>
       <div className={`${pageWidth} flex flex-col gap-10 py-6`}>
         <HeroLead />
         <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">

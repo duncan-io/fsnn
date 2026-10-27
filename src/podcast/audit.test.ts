@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { auditScript, auditSection } from "./audit";
-import type { PlannedSegment, PodcastScript, ScriptLine, ScriptSegment } from "./types";
+import { auditOutline, auditScript, auditSection } from "./audit";
+import type { PlannedSegment, PodcastOutline, PodcastScript, ScriptLine, ScriptSegment } from "./types";
 
 describe("auditSection", () => {
   test("rejects an invented number, an unknown name, and banned words", () => {
@@ -31,6 +31,41 @@ describe("auditSection", () => {
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors).toContain("Wolves and Bench have not played yet.");
+  });
+
+  test("allows last week only when the earlier episode is on the sheet", () => {
+    const bare = auditSection(openSlot(), { id: "open", kind: "open", matchupKey: null, lines: talk(`The Dig last week ${fill(36)}`, fill(40)) });
+    expect(bare.ok).toBe(false);
+    if (!bare.ok) expect(bare.errors).toContain("Last week is not on the sheet.");
+
+    const fromSheet = auditSection(openSlot(lastShow()), {
+      id: "open",
+      kind: "open",
+      matchupKey: null,
+      lines: talk(`The Dig last week Bench is the better club. ${fill(31)}`, fill(40)),
+    });
+    expect(fromSheet.ok).toBe(true);
+
+    const fromLookup = auditSection(
+      openSlot(),
+      { id: "open", kind: "open", matchupKey: null, lines: talk(`The Dig last week ${fill(36)}`, fill(40)) },
+      ["Last show week 5. Bench is the better club."],
+    );
+    expect(fromLookup.ok).toBe(true);
+  });
+});
+
+describe("auditOutline", () => {
+  test("the close has to answer the open when last week is on the sheet", () => {
+    const plan = [openSlot(lastShow()), closeSlot()];
+    const missed = auditOutline(plan, payoff("the week settled it."));
+    expect(missed.ok).toBe(false);
+    if (!missed.ok) expect(missed.errors).toContain("The close has to answer the open.");
+
+    expect(auditOutline(plan, payoff("Wolves were proved right.")).ok).toBe(true);
+    const fresh = openSlot();
+    fresh.facts = { show: "The Dig with Greg and Jerry", leagueName: "Guild", recapWeek: 6, clubs: ["Wolves", "Bench"] };
+    expect(auditOutline([fresh, closeSlot()], payoff("the week settled it.")).ok).toBe(true);
   });
 });
 
@@ -79,6 +114,56 @@ function talk(jerry: string, greg: string): ScriptLine[] {
 
 function fill(count: number): string {
   return Array.from({ length: count }, () => "alpha").join(" ");
+}
+
+function openSlot(desk?: unknown): PlannedSegment {
+  const planned = slot("open");
+  planned.budget = 100;
+  planned.facts = desk
+    ? { show: "The Dig with Greg and Jerry", leagueName: "Guild", recapWeek: 6, desk }
+    : { show: "The Dig with Greg and Jerry", leagueName: "Guild", recapWeek: 6 };
+  return planned;
+}
+
+function closeSlot(): PlannedSegment {
+  const planned = slot("close");
+  planned.kind = "close";
+  planned.budget = 100;
+  planned.facts = { show: "The Dig with Greg and Jerry", leagueName: "Guild", recapWeek: 6, clubs: ["Wolves", "Bench"] };
+  return planned;
+}
+
+function lastShow() {
+  return {
+    week: 5,
+    title: "The Dig, Week 5: Bench is fine",
+    sections: [{ angle: "Wolves are ahead.", jerry: "Wolves are the better club.", greg: "Bench is closer." }],
+  };
+}
+
+function payoff(closeAngle: string): PodcastOutline {
+  return {
+    title: "Wolves",
+    description: "Wolves are ahead.",
+    sections: [
+      {
+        id: "open",
+        angle: "Wolves are ahead.",
+        jerry: "Wolves are the better club.",
+        greg: "Bench is closer.",
+        facts: ["Wolves are ahead."],
+        handoff: "next",
+      },
+      {
+        id: "close",
+        angle: closeAngle,
+        jerry: "the score still stands.",
+        greg: "the score can wait.",
+        facts: ["Wolves are ahead."],
+        handoff: "",
+      },
+    ],
+  };
 }
 
 function slot(id: string): PlannedSegment {

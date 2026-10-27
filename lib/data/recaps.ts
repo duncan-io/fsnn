@@ -1,5 +1,5 @@
 import { cacheLife, cacheTag, io } from "next/cache";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Article, Team } from "@/lib/types";
 import { getDb } from "@/src/db/client";
 import { articles } from "@/src/db/schema";
@@ -91,7 +91,11 @@ async function readStoredRecap(slug: string): Promise<StoredRecap | null> {
   cacheLife("minutes");
   cacheTag("recaps");
   const db = getDb();
-  const [row] = await db.select().from(articles).where(eq(articles.slug, slug)).limit(1);
+  const [row] = await db
+    .select()
+    .from(articles)
+    .where(and(eq(articles.slug, slug), eq(articles.status, "published")))
+    .limit(1);
   if (!row || (row.scope !== "league" && row.scope !== "matchup")) return null;
   const brief = asBrief(row.factSheet);
   if (!brief) return null;
@@ -111,7 +115,7 @@ async function readStoredRecap(slug: string): Promise<StoredRecap | null> {
 async function selectArticles(): Promise<ArticleRow[]> {
   if (!process.env.DATABASE_URL) return [];
   const db = getDb();
-  return db.select().from(articles).orderBy(desc(articles.week));
+  return db.select().from(articles).where(eq(articles.status, "published")).orderBy(desc(articles.week));
 }
 
 const unreachableCodes = new Set([
@@ -154,7 +158,7 @@ function toArticle(row: ArticleRow, body?: RecapBody | null): Article {
       beat: row.reporterBeat,
       initials: row.reporterInitials,
     },
-    publishedAt: row.publishedAt.toISOString(),
+    publishedAt: row.publishedAt?.toISOString() ?? row.updatedAt.toISOString(),
     readTimeMinutes: readTimeMinutes(copy),
     tags: [`week ${row.week}`, "recap"],
     imageUrl: mediaPath(row.imageKey),

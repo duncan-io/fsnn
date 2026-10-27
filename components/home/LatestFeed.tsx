@@ -1,8 +1,14 @@
 import { Suspense } from "react";
+import { io } from "next/cache";
 import { getLatestArticles, getTeams } from "@/lib/data";
+import type { Article } from "@/lib/types";
 import { ArticleCard } from "@/components/ui/ArticleCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { breakingArticle } from "@/src/breaking/display";
+import { listPublishedBreaking } from "@/src/breaking/store";
 import { engagementFor, engagementForSlugs } from "@/src/readers/store";
+
+const WEEK = 7 * 24 * 60 * 60 * 1000;
 
 export function LatestFeed() {
   return (
@@ -16,7 +22,8 @@ export function LatestFeed() {
 }
 
 async function LatestFeedContent() {
-  const [articles, teams] = await Promise.all([getLatestArticles(), getTeams()]);
+  const [fixtures, teams] = await Promise.all([getLatestArticles(), getTeams()]);
+  const articles = [...fixtures, ...(await recentBreaking())].sort(byNewest);
   const engagement = await engagementForSlugs(articles.map((article) => article.slug));
   const [lead, ...rest] = articles;
   const mids = rest.slice(0, 2);
@@ -61,4 +68,19 @@ async function LatestFeedContent() {
       ) : null}
     </div>
   );
+}
+
+async function recentBreaking(): Promise<Article[]> {
+  if (!process.env.DATABASE_URL) return [];
+  await io();
+  try {
+    const stories = await listPublishedBreaking({ since: new Date(Date.now() - WEEK), limit: 20 });
+    return stories.map(breakingArticle);
+  } catch {
+    return [];
+  }
+}
+
+function byNewest(a: Article, b: Article): number {
+  return a.publishedAt < b.publishedAt ? 1 : a.publishedAt > b.publishedAt ? -1 : 0;
 }

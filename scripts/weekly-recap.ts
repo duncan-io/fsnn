@@ -36,13 +36,13 @@ try {
       console.log(`${label}: no completed week.`);
       continue;
     }
-    const message = await generateRecap(league.leagueKey, target);
-    if (!message) {
+    const piece = await generateRecap(league.leagueKey, target);
+    if (!piece) {
       console.log(`${label}: week ${target} is not final.`);
       continue;
     }
-    published += 1;
-    console.log(message);
+    console.log(piece.message);
+    if (piece.outcome === "published") published += 1;
   }
   if (leagues.length > 0 && published === 0) console.log("No recap published.");
 } catch (error) {

@@ -1,5 +1,5 @@
 import { cacheLife, cacheTag, io } from "next/cache";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Article, Team } from "@/lib/types";
 import { getDb } from "@/src/db/client";
 import { articles } from "@/src/db/schema";
@@ -47,7 +47,7 @@ async function readPowerRankings(): Promise<StoredRanking[]> {
   const rows = await db
     .select()
     .from(articles)
-    .where(eq(articles.scope, "power-rankings"))
+    .where(and(eq(articles.scope, "power-rankings"), eq(articles.status, "published")))
     .orderBy(desc(articles.week), desc(articles.publishedAt));
   return rows.flatMap((row) => {
     const stored = toStored(row);
@@ -60,7 +60,11 @@ async function readStoredRanking(slug: string): Promise<StoredRanking | null> {
   cacheLife("minutes");
   cacheTag("rankings");
   const db = getDb();
-  const [row] = await db.select().from(articles).where(eq(articles.slug, slug)).limit(1);
+  const [row] = await db
+    .select()
+    .from(articles)
+    .where(and(eq(articles.slug, slug), eq(articles.status, "published")))
+    .limit(1);
   if (!row || row.scope !== "power-rankings") return null;
   return toStored(row);
 }
@@ -94,7 +98,7 @@ function toArticle(row: ArticleRow, body: RankingsBody): Article {
       beat: row.reporterBeat,
       initials: row.reporterInitials,
     },
-    publishedAt: row.publishedAt.toISOString(),
+    publishedAt: row.publishedAt?.toISOString() ?? row.updatedAt.toISOString(),
     readTimeMinutes: readTimeMinutes(copy),
     tags: [`week ${row.week}`, "rankings"],
     imageUrl: mediaPath(row.imageKey),

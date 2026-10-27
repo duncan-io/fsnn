@@ -1,9 +1,12 @@
 import Link from "next/link";
-import { getBreakingNews } from "@/lib/data";
+import { io } from "next/cache";
 import { pageWidth } from "@/lib/labels";
+import { listPublishedBreaking } from "@/src/breaking/store";
+
+const DAY = 24 * 60 * 60 * 1000;
 
 export async function BreakingBanner() {
-  const [latest] = await getBreakingNews();
+  const latest = await latestBreaking();
   if (!latest) return null;
 
   return (
@@ -25,4 +28,15 @@ export async function BreakingBanner() {
       </div>
     </div>
   );
+}
+
+async function latestBreaking() {
+  if (!process.env.DATABASE_URL) return null;
+  await io();
+  try {
+    const [story] = await listPublishedBreaking({ since: new Date(Date.now() - DAY), limit: 1 });
+    return story ?? null;
+  } catch {
+    return null;
+  }
 }

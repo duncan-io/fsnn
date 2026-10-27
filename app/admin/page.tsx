@@ -3,12 +3,15 @@ import { PendingButton } from "@/components/admin/PendingButton";
 import {
   connectYahoo,
   discardColumn,
+  discardHeld,
   disconnectYahoo,
   generateBackfillWeek,
   login,
   logout,
   publishColumn,
+  publishHeld,
   syncYahoo,
+  writeBreakingStory,
   writeResultsColumn,
   writeWaiverColumn,
 } from "@/app/admin/actions";
@@ -20,6 +23,7 @@ import {
   type BackfillWeek,
   type YahooConnectionStatus,
 } from "@/lib/admin/status";
+import { listHeldArticles, type HeldArticle } from "@/src/desk/queue";
 import { listReviewColumns, resolveLeague, type OpinionColumnView } from "@/src/opinion/store";
 import { formatAbsoluteTime } from "@/lib/format";
 import { pageWidth } from "@/lib/labels";
@@ -56,10 +60,14 @@ function flashMessage(params: AdminSearch) {
   if (error === "sync") return { ok: false, text: detail || "Sync failed." };
   if (error === "connect") return { ok: false, text: detail || "Could not start the Yahoo connection." };
   if (error === "column") return { ok: false, text: detail || "Could not write the column." };
+  if (error === "held") return { ok: false, text: detail || "Could not update that piece." };
+  if (error === "breaking") return { ok: false, text: detail || "Could not write the breaking story." };
   if (error === "backfill") return { ok: false, text: detail || "Could not generate that week." };
   if (notice === "column") return { ok: true, text: detail || "Column saved." };
+  if (notice === "breaking") return { ok: true, text: detail || "Breaking story filed." };
   if (notice === "backfill") return { ok: true, text: detail || "Week generated." };
   if (notice === "published") return { ok: true, text: "Column published." };
+  if (notice === "held") return { ok: true, text: detail || "Piece updated." };
   if (notice === "discarded") return { ok: true, text: "Column discarded." };
   if (notice === "connected") return { ok: true, text: "Yahoo is connected." };
   if (notice === "disconnected") return { ok: true, text: "Yahoo was disconnected." };
@@ -207,6 +215,8 @@ async function AdminPanel({ searchParams }: { searchParams: Promise<AdminSearch>
   const { settings } = dashboard;
   let columns: OpinionColumnView[] = [];
   let columnsError: string | null = null;
+  let held: HeldArticle[] = [];
+  let heldError: string | null = null;
   let backfill: BackfillWeek[] = [];
   let backfillError: string | null = null;
   if (settings.database.ok) {
@@ -214,6 +224,11 @@ async function AdminPanel({ searchParams }: { searchParams: Promise<AdminSearch>
       columns = await listReviewColumns();
     } catch (error) {
       columnsError = publicError(error);
+    }
+    try {
+      held = await listHeldArticles();
+    } catch (error) {
+      heldError = publicError(error);
     }
     try {
       const league = await resolveLeague();
@@ -265,11 +280,13 @@ async function AdminPanel({ searchParams }: { searchParams: Promise<AdminSearch>
           </dl>
         </section>
       </div>
+      <BreakingSection canWrite={settings.database.ok && settings.minimaxKey} />
       <ColumnsSection
         columns={columns}
         columnsError={columnsError}
         canWrite={settings.database.ok && settings.minimaxKey}
       />
+      <HeldSection held={held} heldError={heldError} />
       <BackfillSection
         weeks={backfill}
         error={backfillError}
@@ -281,6 +298,23 @@ async function AdminPanel({ searchParams }: { searchParams: Promise<AdminSearch>
 
 function deskLabel(desk: string) {
   return desk === "waivers" ? "Waivers" : "Results";
+}
+
+function BreakingSection({ canWrite }: { canWrite: boolean }) {
+  return (
+    <section className="mt-6 border border-line bg-surface p-5" aria-labelledby="breaking-heading">
+      <h2 id="breaking-heading" className="font-display text-2xl font-extrabold uppercase tracking-wide">
+        Breaking
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm text-muted">
+        Publishes one story from the synced tables when a trade, a waiver bid, or a starter injury clears the bar.
+        The first run only records what is already on the wire.
+      </p>
+      <form action={writeBreakingStory} className="mt-4">
+        <PendingButton idle="Write breaking story" pending="Writing…" disabled={!canWrite} />
+      </form>
+    </section>
+  );
 }
 
 function ColumnsSection({
@@ -298,7 +332,8 @@ function ColumnsSection({
         Columns
       </h2>
       <p className="mt-2 max-w-2xl text-sm text-muted">
-        Writes a draft from the synced league tables. Publish sends it to the opinion rail.
+        Writes a draft from the synced league tables. Publish sends it to the opinion rail. A column that misses its
+        goal stays here with the editor&apos;s notes.
       </p>
       <div className="mt-4 flex flex-wrap gap-3">
         <form action={writeResultsColumn}>
@@ -325,6 +360,13 @@ function ColumnsSection({
                 <li key={line}>{line}</li>
               ))}
             </ul>
+            {column.reviewNotes.length > 0 ? (
+              <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-down">
+                {column.reviewNotes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            ) : null}
             <div className="mt-4 whitespace-pre-wrap text-sm leading-6">{column.body}</div>
             <p className="mt-3 text-xs text-muted">Saved {formatAbsoluteTime(column.createdAt.toISOString())}</p>
             <div className="mt-4 flex flex-wrap gap-3">
@@ -334,6 +376,56 @@ function ColumnsSection({
               </form>
               <form action={discardColumn}>
                 <input type="hidden" name="id" value={column.id} />
+                <PendingButton idle="Discard" pending="Discarding…" variant="secondary" />
+              </form>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function kindLabel(kind: HeldArticle["kind"]) {
+  return kind === "rankings" ? "Power rankings" : "Recap";
+}
+
+function HeldSection({ held, heldError }: { held: HeldArticle[]; heldError: string | null }) {
+  return (
+    <section className="mt-6 border border-line bg-surface p-5" aria-labelledby="held-heading">
+      <h2 id="held-heading" className="font-display text-2xl font-extrabold uppercase tracking-wide">
+        Needs edit
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm text-muted">
+        Recaps and power rankings that still miss the goal after three rewrites. They stay off the site until you
+        publish or discard them.
+      </p>
+      {heldError ? <p className="mt-4 text-sm text-down">{heldError}</p> : null}
+      {held.length === 0 ? <p className="mt-6 text-sm text-muted">Nothing is waiting.</p> : null}
+      <div className="mt-6 flex flex-col gap-6">
+        {held.map((piece) => (
+          <article key={piece.id} className="border border-line p-4">
+            <p className="font-display text-xs font-bold uppercase tracking-wider text-accent">
+              Week {piece.week} · {kindLabel(piece.kind)} · Needs edit
+            </p>
+            <h3 className="mt-2 font-display text-2xl font-extrabold leading-tight">{piece.headline}</h3>
+            <p className="mt-2 text-sm text-muted">{piece.dek}</p>
+            {piece.notes.length > 0 ? (
+              <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-down">
+                {piece.notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            ) : null}
+            {piece.body ? <div className="mt-4 whitespace-pre-wrap text-sm leading-6">{piece.body}</div> : null}
+            <p className="mt-3 text-xs text-muted">Saved {formatAbsoluteTime(piece.updatedAt.toISOString())}</p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <form action={publishHeld}>
+                <input type="hidden" name="id" value={piece.id} />
+                <PendingButton idle="Publish" pending="Publishing…" />
+              </form>
+              <form action={discardHeld}>
+                <input type="hidden" name="id" value={piece.id} />
                 <PendingButton idle="Discard" pending="Discarding…" variant="secondary" />
               </form>
             </div>

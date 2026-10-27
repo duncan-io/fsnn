@@ -4,12 +4,13 @@ import type { Persona } from "../personas/staff";
 import { recapSlug } from "./slug";
 import type { RecapBody, RecapDraft, WeekBrief } from "./types";
 
-export async function saveRecap(
-  brief: WeekBrief,
-  draft: RecapDraft,
-  persona: Persona,
-  publishedAt = new Date(),
-) {
+export type ArticleRelease = {
+  status: "published" | "needs-edit";
+  publishedAt: Date | null;
+  reviewNotes: string[] | null;
+};
+
+export async function saveRecap(brief: WeekBrief, draft: RecapDraft, persona: Persona, release: ArticleRelease) {
   const db = getDb();
   await db.transaction(async (tx) => {
     await upsert(tx, {
@@ -26,7 +27,9 @@ export async function saveRecap(
         kicker: draft.column.kicker,
       },
       teamKeys: teamKeys(brief, null),
-      publishedAt,
+      publishedAt: release.publishedAt,
+      status: release.status,
+      reviewNotes: release.reviewNotes,
       factSheet: brief,
     }, persona);
     for (const card of draft.cards) {
@@ -40,7 +43,9 @@ export async function saveRecap(
         dek: card.dek,
         body: null,
         teamKeys: teamKeys(brief, card.matchupKey),
-        publishedAt,
+        publishedAt: release.publishedAt,
+        status: release.status,
+        reviewNotes: release.reviewNotes,
         factSheet: brief,
       }, persona);
     }
@@ -61,7 +66,9 @@ async function upsert(
     dek: string;
     body: RecapBody | null;
     teamKeys: string[];
-    publishedAt: Date;
+    publishedAt: Date | null;
+    status: "published" | "needs-edit";
+    reviewNotes: string[] | null;
     factSheet: WeekBrief;
   },
   persona: Persona,
@@ -84,6 +91,8 @@ async function upsert(
         teamKeys: row.teamKeys,
         factSheet: row.factSheet,
         publishedAt: row.publishedAt,
+        status: row.status,
+        reviewNotes: row.reviewNotes,
         updatedAt: new Date(),
       },
     });

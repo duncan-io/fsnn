@@ -5,7 +5,7 @@ export const HEAT_FLOOR = 12;
 
 const RANK_GAP_MIN = 2;
 const POINT_GAP_MIN = 12;
-const FAAB_MIN = 12;
+export const FAAB_MIN = 12;
 const MOVES_MIN = 4;
 
 export function scoreResults(standings: TeamSeason[], lines: WeekLine[]): Angle[] {

@@ -1,8 +1,11 @@
-import { minimaxJsonDraft } from "../minimax/draft";
+import { completeTurn } from "../minimax/client";
+import { minimaxJsonDraft, type DraftTool } from "../minimax/draft";
 import type { WeekBrief } from "../recap/types";
 import { auditScript, auditSection, reviewPersonas } from "./audit";
 import { planSegments } from "./budget";
+import { loadDesk } from "./desk";
 import { writeOutline } from "./outline";
+import { deskTools } from "./tools";
 import type { PreviewBrief } from "./preview";
 import { episodeTitle } from "./show";
 import type {
@@ -19,13 +22,15 @@ const ATTEMPTS = 3;
 const DRAFT_TOKENS = 3000;
 
 export async function writeScript(recap: WeekBrief, preview: PreviewBrief | null): Promise<PodcastScript> {
-  const plan = planSegments(recap, preview);
-  const outline = await writeOutline(plan, recap.week);
+  const desk = await loadDesk(recap.leagueKey, recap.week);
+  const plan = planSegments(recap, preview, desk);
+  const tools = deskTools(desk);
+  const outline = await writeOutline(plan, recap.week, tools);
   const segments: ScriptSegment[] = [];
   for (const planned of plan) {
     const section = sectionFor(outline, planned.id);
     const handoff = nextHandoff(outline, planned.id);
-    segments.push(await draftSection(planned, section, handoff, tailOf(segments), recap.week, []));
+    segments.push(await draftSection(planned, section, handoff, tailOf(segments), recap.week, [], tools));
   }
   let script = assemble(recap.week, outline, segments);
   let check = auditScript(plan, script);
@@ -40,7 +45,7 @@ export async function writeScript(recap: WeekBrief, preview: PreviewBrief | null
         continue;
       }
       rewritten.push(
-        await draftSection(planned, sectionFor(outline, planned.id), nextHandoff(outline, planned.id), tailOf(rewritten), recap.week, check.errors),
+        await draftSection(planned, sectionFor(outline, planned.id), nextHandoff(outline, planned.id), tailOf(rewritten), recap.week, check.errors, tools),
       );
     }
     script = assemble(recap.week, outline, rewritten);
@@ -57,6 +62,7 @@ async function draftSection(
   tail: ScriptLine[],
   week: number,
   prior: string[],
+  tools: DraftTool[],
 ): Promise<ScriptSegment> {
   let errors = [...prior];
   let last = `Section ${planned.id} failed the audit.`;
@@ -64,7 +70,7 @@ async function draftSection(
     let lines: ScriptLine[];
     let snippets: string[];
     try {
-      const drafted = await requestSection(planned, section, handoff, tail, week, errors);
+      const drafted = await requestSection(planned, section, handoff, tail, week, errors, tools);
       lines = drafted.lines;
       snippets = drafted.snippets;
     } catch (error) {
@@ -84,7 +90,7 @@ async function draftSection(
       errors = audited.errors;
       continue;
     }
-    const persona = await reviewPersonas(segment, section);
+    const persona = await reviewPersonas(segment, section, completeTurn, lastShowOf(planned.facts));
     if (persona.length > 0) {
       last = persona.join("\n");
       errors = persona;
@@ -102,6 +108,7 @@ async function requestSection(
   tail: ScriptLine[],
   week: number,
   errors: string[],
+  tools: DraftTool[],
 ) {
   const correction = errors.length > 0 ? `\n\nFix these problems and return the full JSON again:\n${errors.join("\n")}` : "";
   const result = await minimaxJsonDraft({
@@ -119,6 +126,7 @@ async function requestSection(
     week,
     maxTokens: DRAFT_TOKENS,
     temperature: 0.8,
+    tools,
     parse: readLines,
   });
   return { lines: result.value, snippets: result.snippets };
@@ -138,6 +146,13 @@ export function readLines(value: unknown): ScriptLine[] {
   }
   if (lines.length === 0) throw new Error("Section JSON has no lines.");
   return lines;
+}
+
+function lastShowOf(facts: unknown): unknown {
+  if (!facts || typeof facts !== "object" || !("desk" in facts)) return null;
+  const desk = (facts as { desk: unknown }).desk;
+  if (!desk || typeof desk !== "object" || !Array.isArray((desk as { sections?: unknown }).sections)) return null;
+  return desk;
 }
 
 function assemble(week: number, outline: PodcastOutline, segments: ScriptSegment[]): PodcastScript {

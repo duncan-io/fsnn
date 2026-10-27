@@ -4,6 +4,18 @@ import { extractJson } from "./json";
 
 const LOOKUP_TURNS = 4;
 
+export type DraftTool = {
+  spec: {
+    type: "function";
+    function: {
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+    };
+  };
+  run: (args: string) => Promise<{ content: string; snippet: string | null }>;
+};
+
 const LOOKUP_TOOL = {
   type: "function",
   function: {
@@ -27,20 +39,27 @@ export async function minimaxJsonDraft<T>(args: {
   parse: (value: unknown) => T;
   maxTokens?: number;
   temperature?: number;
+  lookupPlayer?: boolean;
   turn?: typeof completeTurn;
   lookup?: { snippets: string[]; run: (playerName: string) => Promise<string> };
+  tools?: DraftTool[];
 }): Promise<{ value: T; snippets: string[] }> {
   const turn = args.turn ?? completeTurn;
   const options: CompleteOptions = {};
   if (args.maxTokens != null) options.maxTokens = args.maxTokens;
   if (args.temperature != null) options.temperature = args.temperature;
   const lookups = args.lookup ?? createLookups(args.players, args.week);
+  const extra = args.tools ?? [];
+  const specs = [
+    ...(args.lookupPlayer === false ? [] : [LOOKUP_TOOL]),
+    ...extra.map((tool) => tool.spec),
+  ];
   const messages: MiniMaxMessage[] = [
     { role: "system", content: args.system },
     { role: "user", content: args.user },
   ];
   for (let step = 0; step < LOOKUP_TURNS; step += 1) {
-    const result = await turn(messages, [LOOKUP_TOOL], options);
+    const result = await turn(messages, specs.length > 0 ? specs : undefined, options);
     if (result.toolCalls.length === 0) {
       if (!result.content) throw new Error("MiniMax returned an empty draft.");
       return { value: args.parse(extractJson(result.content)), snippets: lookups.snippets };
@@ -55,13 +74,28 @@ export async function minimaxJsonDraft<T>(args: {
       })),
     });
     for (const call of result.toolCalls) {
-      const name = readPlayerName(call.arguments);
-      const content =
-        call.name === "lookup_player" && name ? await lookups.run(name) : "Use lookup_player with a rostered player name.";
+      const content = await dispatchTool(call.name, call.arguments, lookups, extra);
       messages.push({ role: "tool", tool_call_id: call.id, content });
     }
   }
   throw new Error("Draft did not return JSON.");
+}
+
+async function dispatchTool(
+  name: string,
+  args: string,
+  lookups: { snippets: string[]; run: (playerName: string) => Promise<string> },
+  extra: DraftTool[],
+): Promise<string> {
+  if (name === "lookup_player") {
+    const player = readPlayerName(args);
+    return player ? lookups.run(player) : "Use lookup_player with a rostered player name.";
+  }
+  const tool = extra.find((item) => item.spec.function.name === name);
+  if (!tool) return "Use lookup_player with a rostered player name.";
+  const reply = await tool.run(args);
+  if (reply.snippet) lookups.snippets.push(reply.snippet);
+  return reply.content;
 }
 
 function readPlayerName(raw: string): string | null {
