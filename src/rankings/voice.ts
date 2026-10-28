@@ -15,6 +15,8 @@ Voice:
 - Start every headline and every sentence with a team name, a manager name, or the league name. Do not capitalize ordinary words.
 - Use the numbers exactly as given. Do not round. Do not write the abbreviation No.
 
+Reply with JSON only, no markdown.
+
 Shape:
 - headline, dek, lede, entries, kicker
 - entries is one object per team, in fact-sheet order: teamKey and paragraphs

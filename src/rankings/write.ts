@@ -1,56 +1,27 @@
-import { draftUntil, RANKINGS_GOAL, reviewWithOpenAi } from "../desk/review";
+import { draftUntil, RANKINGS_GOAL, reviewWithMinimax } from "../desk/review";
+import { minimaxJsonDraft } from "../minimax/draft";
 import type { Persona } from "../personas/staff";
 import type { LookupPlayer } from "../search/lookup";
-import { openAiJsonDraft } from "../search/openai";
 import type { RankingsBrief, RankingsDraft } from "./types";
 import { validateRankings } from "./validate";
 import { rankingsStyle } from "./voice";
-
-const RANKINGS_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["headline", "dek", "lede", "entries", "kicker"],
-  properties: {
-    headline: { type: "string" },
-    dek: { type: "string" },
-    lede: { type: "string" },
-    kicker: { anyOf: [{ type: "string" }, { type: "null" }] },
-    entries: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["teamKey", "paragraphs"],
-        properties: {
-          teamKey: { type: "string" },
-          paragraphs: { type: "array", items: { type: "string" } },
-        },
-      },
-    },
-  },
-} as const;
 
 export type WrittenRankings =
   | { ok: true; draft: RankingsDraft }
   | { ok: false; draft: RankingsDraft; notes: string[] };
 
-export async function writeRankings(
-  brief: RankingsBrief,
-  persona: Persona,
-  complete: typeof fetch = fetch,
-): Promise<WrittenRankings> {
+export async function writeRankings(brief: RankingsBrief, persona: Persona): Promise<WrittenRankings> {
   const result = await draftUntil({
-    write: (notes) => requestDraft(brief, persona, notes, complete),
+    write: (notes) => requestDraft(brief, persona, notes),
     facts: (drafted) => {
       const checked = validateRankings(brief, drafted.draft, drafted.snippets);
       return checked.ok ? [] : checked.errors;
     },
     edit: (drafted) =>
-      reviewWithOpenAi({
+      reviewWithMinimax({
         goal: RANKINGS_GOAL,
         brief: JSON.stringify(brief),
         copy: rankingsCopy(drafted.draft),
-        complete,
       }),
   });
   return result.ok
@@ -72,30 +43,49 @@ async function requestDraft(
   brief: RankingsBrief,
   persona: Persona,
   errors: string[],
-  complete: typeof fetch,
 ): Promise<{ draft: RankingsDraft; snippets: string[] }> {
-  const key = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL;
-  if (!key || !model) {
-    throw new Error("Set OPENAI_API_KEY and OPENAI_MODEL before writing power rankings.");
-  }
   const correction =
     errors.length > 0 ? `\n\nFix these problems and return the full JSON again:\n${errors.join("\n")}` : "";
-  const result = await openAiJsonDraft<RankingsDraft>({
-    key,
-    model,
-    temperature: 0.8,
-    messages: [
-      { role: "system", content: rankingsStyle(persona) },
-      { role: "user", content: `${JSON.stringify(brief)}${correction}` },
-    ],
-    schemaName: "power_rankings",
-    schema: RANKINGS_SCHEMA,
+  const result = await minimaxJsonDraft({
+    system: rankingsStyle(persona),
+    user: `${JSON.stringify(brief)}${correction}`,
     players: playersIn(brief),
     week: brief.week,
-    complete,
+    temperature: 0.8,
+    parse: readRankingsDraft,
   });
   return { draft: result.value, snippets: result.snippets };
+}
+
+function readRankingsDraft(value: unknown): RankingsDraft {
+  if (!value || typeof value !== "object") throw new Error("Rankings JSON was empty.");
+  const row = value as {
+    headline?: unknown;
+    dek?: unknown;
+    lede?: unknown;
+    entries?: unknown;
+    kicker?: unknown;
+  };
+  if (
+    typeof row.headline !== "string" ||
+    typeof row.dek !== "string" ||
+    typeof row.lede !== "string" ||
+    !Array.isArray(row.entries)
+  ) {
+    throw new Error("Rankings JSON is missing headline, dek, lede, or entries.");
+  }
+  const entries = row.entries.map((entry) => {
+    if (!entry || typeof entry !== "object") throw new Error("Rankings entry was not an object.");
+    const item = entry as { teamKey?: unknown; paragraphs?: unknown };
+    if (typeof item.teamKey !== "string" || !Array.isArray(item.paragraphs)) {
+      throw new Error("Rankings entry is missing teamKey or paragraphs.");
+    }
+    const paragraphs = item.paragraphs.filter((paragraph): paragraph is string => typeof paragraph === "string");
+    return { teamKey: item.teamKey, paragraphs };
+  });
+  const kicker = row.kicker == null ? null : row.kicker;
+  if (kicker !== null && typeof kicker !== "string") throw new Error("Rankings kicker was not a string.");
+  return { headline: row.headline, dek: row.dek, lede: row.lede, entries, kicker };
 }
 
 function playersIn(brief: RankingsBrief): LookupPlayer[] {

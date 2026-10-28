@@ -1,3 +1,4 @@
+import { persistSoleLeagueIfUnset } from "../leagues/active";
 import { YahooClient, type YahooResponse } from "./client";
 import { extractGames, extractLeagues, extractPlayers, extractTeams, extractTransactions } from "./extract";
 import { ingest } from "./ingest";
@@ -77,6 +78,7 @@ export async function syncCurrentNfl(): Promise<NflSyncSummary> {
   for (const league of leagues) {
     await syncLeague(client, league.leagueKey);
   }
+  await persistSoleLeagueIfUnset();
   const message = `Synced ${leagues.length} NFL league${leagues.length === 1 ? "" : "s"}.`;
   console.log(message);
   return { leagues: leagues.length, message };

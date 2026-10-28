@@ -1,16 +1,20 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { leagues, matchups } from "../db/schema";
+import { getActiveLeagueKey } from "../leagues/active";
 import { assembleDossier, loadLeagueWeek, toBriefInput } from "../facts/dossier";
 import { enrichBrief } from "../facts/sheet";
 import { buildWeekBrief, completedWeek } from "./brief";
 import type { WeekBrief } from "./types";
 
 export async function listRecapLeagues() {
+  const key = await getActiveLeagueKey();
+  if (!key) return [];
   const db = getDb();
   return db
     .select({ leagueKey: leagues.leagueKey, name: leagues.name, gameKey: leagues.gameKey })
-    .from(leagues);
+    .from(leagues)
+    .where(eq(leagues.leagueKey, key));
 }
 
 export async function latestCompletedWeek(leagueKey: string): Promise<number | null> {

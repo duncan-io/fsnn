@@ -12,6 +12,12 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const yahooTokens = pgTable("yahoo_tokens", {
   id: text("id").primaryKey(),
   accessToken: text("access_token").notNull(),

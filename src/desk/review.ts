@@ -27,23 +27,6 @@ export const OPINION_GOAL = [
   "It does not wander into a recap of the whole week.",
 ].join(" ");
 
-const FLAG_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["flags"],
-  properties: {
-    flags: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["reason"],
-        properties: { reason: { type: "string" } },
-      },
-    },
-  },
-} as const;
-
 export type DraftResult<T> = { ok: true; draft: T } | { ok: false; draft: T; notes: string[] };
 
 export function editorStyle(goal: string): string {
@@ -108,53 +91,6 @@ export async function draftUntil<T>(args: {
   }
   if (!held) throw new Error(lastUnread);
   return { ok: false, draft: held.draft, notes: held.notes };
-}
-
-export async function reviewWithOpenAi(args: {
-  goal: string;
-  brief: string;
-  copy: string;
-  complete?: typeof fetch;
-}): Promise<string[]> {
-  const key = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL;
-  if (!key || !model) {
-    throw new Error("Set OPENAI_API_KEY and OPENAI_MODEL before reviewing a draft.");
-  }
-  const complete = args.complete ?? fetch;
-  const response = await complete("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: REVIEW_TEMPERATURE,
-      messages: [
-        { role: "system", content: editorStyle(args.goal) },
-        { role: "user", content: JSON.stringify({ brief: args.brief, copy: args.copy }) },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: { name: "editor_flags", strict: true, schema: FLAG_SCHEMA },
-      },
-    }),
-  });
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`OpenAI request failed (${response.status}): ${detail.slice(0, 500)}`);
-  }
-  const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-  };
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) return ["Editor review was empty."];
-  try {
-    return readFlags(JSON.parse(content));
-  } catch {
-    return ["Editor review was not JSON."];
-  }
 }
 
 export async function reviewWithMinimax(args: {

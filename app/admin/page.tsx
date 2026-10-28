@@ -10,6 +10,7 @@ import {
   logout,
   publishColumn,
   publishHeld,
+  setActiveLeague,
   syncYahoo,
   writeBreakingStory,
   writeResultsColumn,
@@ -24,6 +25,7 @@ import {
   type YahooConnectionStatus,
 } from "@/lib/admin/status";
 import { listHeldArticles, type HeldArticle } from "@/src/desk/queue";
+import { leagueLabel, loadActiveLeagueStatus, type ActiveLeagueStatus } from "@/src/leagues/active";
 import { listReviewColumns, resolveLeague, type OpinionColumnView } from "@/src/opinion/store";
 import { formatAbsoluteTime } from "@/lib/format";
 import { pageWidth } from "@/lib/labels";
@@ -63,6 +65,7 @@ function flashMessage(params: AdminSearch) {
   if (error === "held") return { ok: false, text: detail || "Could not update that piece." };
   if (error === "breaking") return { ok: false, text: detail || "Could not write the breaking story." };
   if (error === "backfill") return { ok: false, text: detail || "Could not generate that week." };
+  if (error === "league") return { ok: false, text: detail || "Could not save the league." };
   if (notice === "column") return { ok: true, text: detail || "Column saved." };
   if (notice === "breaking") return { ok: true, text: detail || "Breaking story filed." };
   if (notice === "backfill") return { ok: true, text: detail || "Week generated." };
@@ -72,6 +75,7 @@ function flashMessage(params: AdminSearch) {
   if (notice === "connected") return { ok: true, text: "Yahoo is connected." };
   if (notice === "disconnected") return { ok: true, text: "Yahoo was disconnected." };
   if (notice === "sync") return { ok: true, text: detail || "Sync finished." };
+  if (notice === "league") return { ok: true, text: detail || "Active league saved." };
   return null;
 }
 
@@ -169,6 +173,52 @@ function ConnectionCard({
   );
 }
 
+function LeagueCard({ status, error }: { status: ActiveLeagueStatus | null; error: string | null }) {
+  return (
+    <section className="border border-line bg-surface p-5" aria-labelledby="league-heading">
+      <h2 id="league-heading" className="font-display text-2xl font-extrabold uppercase tracking-wide">
+        League
+      </h2>
+      <p className="mt-2 text-sm text-muted">This newsroom covers one league. Sync Yahoo, then choose it by name.</p>
+      {error ? <p className="mt-4 text-sm text-down">{error}</p> : null}
+      {status && status.leagues.length === 0 && !error ? (
+        <p className="mt-4 text-sm text-muted">{status.message}</p>
+      ) : null}
+      {status && status.leagues.length > 0 ? (
+        <form action={setActiveLeague} className="mt-4">
+          <fieldset disabled={status.lockedByEnv} className="flex flex-col gap-2">
+            <legend className="sr-only">Active league</legend>
+            {status.leagues.map((league) => (
+              <label key={league.leagueKey} className="flex items-start gap-3 border border-line px-3 py-2">
+                <input
+                  type="radio"
+                  name="leagueKey"
+                  value={league.leagueKey}
+                  defaultChecked={league.leagueKey === status.selectedKey}
+                  required
+                  className="mt-1"
+                />
+                <span>
+                  <span className="block text-sm">{leagueLabel(league)}</span>
+                  <span className="block text-sm text-muted">
+                    {league.numTeams ?? "—"} teams · Week {league.currentWeek ?? "—"}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+          {status.message ? <p className="mt-3 text-sm text-muted">{status.message}</p> : null}
+          {status.lockedByEnv ? null : (
+            <div className="mt-4">
+              <PendingButton idle="Save league" pending="Saving…" />
+            </div>
+          )}
+        </form>
+      ) : null}
+    </section>
+  );
+}
+
 async function AdminPanel({ searchParams }: { searchParams: Promise<AdminSearch> }) {
   const params = await searchParams;
   const flash = flashMessage(params);
@@ -219,6 +269,8 @@ async function AdminPanel({ searchParams }: { searchParams: Promise<AdminSearch>
   let heldError: string | null = null;
   let backfill: BackfillWeek[] = [];
   let backfillError: string | null = null;
+  let leagueStatus: ActiveLeagueStatus | null = null;
+  let leagueError: string | null = null;
   if (settings.database.ok) {
     try {
       columns = await listReviewColumns();
@@ -236,8 +288,14 @@ async function AdminPanel({ searchParams }: { searchParams: Promise<AdminSearch>
     } catch (error) {
       backfillError = publicError(error);
     }
+    try {
+      leagueStatus = await loadActiveLeagueStatus();
+    } catch (error) {
+      leagueError = publicError(error);
+    }
   } else {
     backfillError = settings.database.message;
+    leagueError = settings.database.message;
   }
 
   return (
@@ -254,6 +312,7 @@ async function AdminPanel({ searchParams }: { searchParams: Promise<AdminSearch>
       <Flash message={flash} />
       <div className="grid items-start gap-6 lg:grid-cols-2">
         <ConnectionCard connection={dashboard.connection} connectionError={dashboard.connectionError} />
+        <LeagueCard status={leagueStatus} error={leagueError} />
         <section className="border border-line bg-surface p-5" aria-labelledby="settings-heading">
           <h2 id="settings-heading" className="font-display text-2xl font-extrabold uppercase tracking-wide">
             Settings

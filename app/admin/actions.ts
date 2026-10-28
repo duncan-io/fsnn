@@ -19,6 +19,7 @@ import { discardHeldArticle, publishHeldArticle } from "@/src/desk/queue";
 import { discardOpinion, publishOpinion, resolveLeague } from "@/src/opinion/store";
 import type { OpinionDesk } from "@/src/opinion/types";
 import { describeBreaking, writeBreaking } from "@/src/breaking/write";
+import { envLeagueKey, setActiveLeagueKey } from "@/src/leagues/active";
 import { describeWrite, writeOpinion } from "@/src/opinion/write";
 import { syncCurrentNfl } from "@/src/yahoo/sync";
 
@@ -76,6 +77,23 @@ export async function syncYahoo() {
   }
   const query = new URLSearchParams({ detail: detail.slice(0, 240) });
   query.set(failed ? "error" : "notice", "sync");
+  redirect(`/admin?${query.toString()}`);
+}
+
+export async function setActiveLeague(formData: FormData) {
+  await guard();
+  let failed = false;
+  let detail = "";
+  try {
+    if (envLeagueKey()) throw new Error("LEAGUE_KEY overrides the Admin picker.");
+    await setActiveLeagueKey(String(formData.get("leagueKey") ?? ""));
+    detail = "Active league saved.";
+  } catch (error) {
+    failed = true;
+    detail = publicError(error);
+  }
+  const query = new URLSearchParams({ detail: detail.slice(0, 240) });
+  query.set(failed ? "error" : "notice", "league");
   redirect(`/admin?${query.toString()}`);
 }
 

@@ -15,6 +15,8 @@ Voice:
 - Use the numbers exactly as given. Do not round.
 - When a matchup result is tie, the two sides are ordered for stability and neither team won. Say it was a tie.
 
+Reply with JSON only, no markdown.
+
 Shape:
 - column.headline, column.dek, column.lede, column.sections, column.kicker
 - each section has matchupKey, heading, and paragraphs

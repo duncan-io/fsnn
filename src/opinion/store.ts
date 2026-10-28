@@ -14,6 +14,7 @@ import {
 import { rewindActivity, seasonPointsThrough } from "../facts/asof";
 import { recordsThrough } from "../facts/memory";
 import { mediaPath } from "../images/key";
+import { requireActiveLeague } from "../leagues/active";
 import { completedWeek, inWeekWindow, playerWeekPoints } from "../recap/brief";
 import type { OpinionBrief, OpinionDesk, TeamSeason, WaiverAdd, WeekLine } from "./types";
 
@@ -47,15 +48,8 @@ export type OpinionColumnView = {
 
 export async function resolveLeague(): Promise<LeagueContext> {
   const db = getDb();
-  const key = process.env.LEAGUE_KEY?.trim();
-  const rows = key
-    ? await db.select().from(leagues).where(eq(leagues.leagueKey, key))
-    : await db.select().from(leagues);
-  if (rows.length === 0) {
-    throw new Error(key ? `No league stored for ${key}. Sync Yahoo first.` : "No leagues stored. Sync Yahoo first.");
-  }
-  if (!key && rows.length > 1) throw new Error("More than one league is synced. Set LEAGUE_KEY.");
-  const league = rows[0];
+  const key = await requireActiveLeague();
+  const [league] = await db.select().from(leagues).where(eq(leagues.leagueKey, key)).limit(1);
   if (!league?.currentWeek) throw new Error("This league has no current week. Sync Yahoo first.");
   return {
     leagueKey: league.leagueKey,

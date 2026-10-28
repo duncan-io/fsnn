@@ -104,7 +104,9 @@ export async function generateRankings(leagueKey: string, week: number): Promise
 
 async function generateOpinion(leagueKey: string, week: number, desk: OpinionDesk): Promise<string> {
   const league = await resolveLeague();
-  if (league.leagueKey !== leagueKey) throw new Error("Set LEAGUE_KEY to this league before writing columns.");
+  if (league.leagueKey !== leagueKey) {
+    throw new Error("Pick this league as the active league in Admin before writing columns.");
+  }
   const result = await writeOpinion(desk, { week, backfill: true });
   if (result.outcome === "no-angle") return "no angle";
   if (result.outcome === "needs-edit") return "needs edit";
