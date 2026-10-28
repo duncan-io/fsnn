@@ -3,6 +3,7 @@ const ZONE = "America/New_York";
 const SLOTS = {
   results: { days: 1, hour: 9 },
   recap: { days: 1, hour: 10 },
+  podcast: { days: 1, hour: 11 },
   rankings: { days: 2, hour: 10 },
   waivers: { days: 4, hour: 9 },
 } as const;

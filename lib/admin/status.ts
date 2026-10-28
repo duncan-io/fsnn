@@ -2,7 +2,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { io } from "next/cache";
 import postgres from "postgres";
 import { getDb } from "@/src/db/client";
-import { articles, leagues, matchups, opinionColumns, yahooResources, yahooTokens } from "@/src/db/schema";
+import { articles, leagues, matchups, opinionColumns, podcastEpisodes, yahooResources, yahooTokens } from "@/src/db/schema";
 import { completedWeek } from "@/src/recap/brief";
 import { redirectUri } from "@/src/yahoo/client";
 
@@ -37,6 +37,7 @@ export type BackfillWeek = {
   rankings: boolean;
   results: boolean;
   waivers: boolean;
+  podcast: boolean;
   previousRankings: boolean;
 };
 
@@ -137,7 +138,7 @@ export async function loadBackfillWeeks(leagueKey: string): Promise<BackfillWeek
   const latest = completedWeek(matchupRows);
   if (latest == null) return [];
   const start = league.startWeek && league.startWeek > 0 ? league.startWeek : 1;
-  const [articleRows, opinionRows] = await Promise.all([
+  const [articleRows, opinionRows, podcastRows] = await Promise.all([
     db
       .select({ week: articles.week, scope: articles.scope })
       .from(articles)
@@ -152,6 +153,7 @@ export async function loadBackfillWeeks(leagueKey: string): Promise<BackfillWeek
       .select({ week: opinionColumns.week, desk: opinionColumns.desk, status: opinionColumns.status })
       .from(opinionColumns)
       .where(eq(opinionColumns.leagueKey, leagueKey)),
+    db.select({ week: podcastEpisodes.week }).from(podcastEpisodes).where(eq(podcastEpisodes.leagueKey, leagueKey)),
   ]);
   const recapWeeks = new Set(articleRows.filter((row) => row.scope === "league").map((row) => row.week));
   const rankingWeeks = new Set(articleRows.filter((row) => row.scope === "power-rankings").map((row) => row.week));
@@ -161,6 +163,7 @@ export async function loadBackfillWeeks(leagueKey: string): Promise<BackfillWeek
   const waiverWeeks = new Set(
     opinionRows.filter((row) => row.desk === "waivers" && row.status !== "discarded").map((row) => row.week),
   );
+  const podcastWeeks = new Set(podcastRows.map((row) => row.week));
   const weeks: BackfillWeek[] = [];
   for (let week = start; week <= latest; week += 1) {
     weeks.push({
@@ -169,6 +172,7 @@ export async function loadBackfillWeeks(leagueKey: string): Promise<BackfillWeek
       rankings: rankingWeeks.has(week),
       results: resultWeeks.has(week),
       waivers: waiverWeeks.has(week),
+      podcast: podcastWeeks.has(week),
       previousRankings: week === start || rankingWeeks.has(week - 1),
     });
   }

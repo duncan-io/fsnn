@@ -511,14 +511,14 @@ function BackfillSection({
       </h2>
       <p className="mt-2 max-w-2xl text-sm text-muted">
         Sync Yahoo first so the full transaction history is stored. Then generate one week as it stood then: the recap,
-        power rankings, and both columns. Each piece is dated to that week&apos;s normal slot. Generating again
-        overwrites that week.
+        power rankings, both columns, and The Dig. Each piece is dated to that week&apos;s normal slot. Generating
+        again overwrites that week.
       </p>
       {error ? <p className="mt-4 text-sm text-down">{error}</p> : null}
       {!error && weeks.length === 0 ? <p className="mt-6 text-sm text-muted">No completed weeks yet.</p> : null}
       <div className="mt-2">
         {weeks.map((week) => {
-          const ready = week.recap || week.rankings || week.results || week.waivers;
+          const ready = week.recap || week.rankings || week.results || week.waivers || week.podcast;
           return (
             <div
               key={week.week}
@@ -528,7 +528,8 @@ function BackfillSection({
                 <p className="font-display text-sm font-bold uppercase tracking-wide">Week {week.week}</p>
                 <p className="mt-1 text-sm text-muted">
                   {pieceState(week.recap, "Recap")} · {pieceState(week.rankings, "Rankings")} ·{" "}
-                  {pieceState(week.results, "Results")} · {pieceState(week.waivers, "Waivers")}
+                  {pieceState(week.results, "Results")} · {pieceState(week.waivers, "Waivers")} ·{" "}
+                  {pieceState(week.podcast, "Dig")}
                 </p>
                 {week.previousRankings ? null : (
                   <p className="mt-1 text-sm text-muted">

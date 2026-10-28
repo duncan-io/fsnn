@@ -6,6 +6,10 @@ import { resolveLeague } from "../opinion/store";
 import type { OpinionDesk } from "../opinion/types";
 import { writeOpinion } from "../opinion/write";
 import { assignPersona } from "../personas/staff";
+import { episodeAudioKey, saveEpisode } from "../podcast/publish";
+import { loadPreviewBrief } from "../podcast/preview";
+import { renderEpisode } from "../podcast/render";
+import { writeScript } from "../podcast/write";
 import { loadRankingsBrief } from "../rankings/load";
 import { saveRankings } from "../rankings/publish";
 import { rankingsSlug } from "../rankings/slug";
@@ -13,9 +17,10 @@ import { writeRankings } from "../rankings/write";
 import { loadWeekBrief } from "../recap/load";
 import { saveRecap } from "../recap/publish";
 import { writeRecap } from "../recap/write";
+import { putObject } from "../storage/bucket";
 import { slotFor } from "./schedule";
 
-export type PieceName = "recap" | "rankings" | "results" | "waivers";
+export type PieceName = "recap" | "rankings" | "results" | "waivers" | "podcast";
 
 export type PieceResult = {
   piece: PieceName;
@@ -37,6 +42,7 @@ export async function generateWeek(leagueKey: string, week: number): Promise<Pie
     }),
     await runPiece("results", () => generateOpinion(leagueKey, week, "results")),
     await runPiece("waivers", () => generateOpinion(leagueKey, week, "waivers")),
+    await runPiece("podcast", () => generatePodcast(leagueKey, week)),
   ];
 }
 
@@ -100,6 +106,27 @@ export async function generateRankings(leagueKey: string, week: number): Promise
     dek: written.draft.dek,
   });
   return { outcome: "published", message: `Published week ${week} power rankings for ${brief.leagueName}.` };
+}
+
+async function generatePodcast(leagueKey: string, week: number): Promise<string> {
+  const brief = await loadWeekBrief(leagueKey, week);
+  if (!brief) throw new Error(`Week ${week} is not final.`);
+  if (!brief.weekEnd) throw new Error(`Week ${week} has no end date.`);
+  const preview = await loadPreviewBrief(leagueKey, week);
+  const script = await writeScript(brief, preview);
+  const audio = await renderEpisode(script);
+  const audioKey = episodeAudioKey(brief.leagueKey, brief.week);
+  await putObject(audioKey, audio.bytes, "audio/mpeg");
+  await saveEpisode({
+    recap: brief,
+    preview,
+    script,
+    audioKey,
+    durationSeconds: audio.durationSeconds,
+    audioBytes: audio.bytes.length,
+    publishedAt: slotFor(brief.weekEnd, "podcast"),
+  });
+  return "ok";
 }
 
 async function generateOpinion(leagueKey: string, week: number, desk: OpinionDesk): Promise<string> {

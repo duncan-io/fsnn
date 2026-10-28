@@ -24,6 +24,7 @@ export async function saveEpisode(args: {
   audioKey: string;
   durationSeconds: number;
   audioBytes: number;
+  publishedAt?: Date;
 }) {
   const db = getDb();
   const row = {
@@ -38,7 +39,7 @@ export async function saveEpisode(args: {
     durationSeconds: args.durationSeconds,
     audioBytes: args.audioBytes,
     hosts: [...SHOW.hosts],
-    publishedAt: new Date(),
+    publishedAt: args.publishedAt ?? new Date(),
   };
   await db
     .insert(podcastEpisodes)
