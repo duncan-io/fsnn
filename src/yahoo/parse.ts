@@ -73,10 +73,8 @@ export function flattenYahoo(node: unknown): unknown {
     }
     if (isResourceTuple(node)) {
       const merged: Record<string, unknown> = {};
-      for (const part of node.map((item) => flattenYahoo(item))) {
-        if (isRecord(part)) Object.assign(merged, part);
-      }
-      return merged;
+      for (const part of node.map((item) => flattenYahoo(item))) mergeInto(merged, part);
+      return liftNumericWrapper(merged);
     }
     const flattened = node.map((item) => flattenYahoo(item));
     if (
@@ -105,7 +103,32 @@ export function flattenYahoo(node: unknown): unknown {
     if (SKIP_KEYS.has(key)) continue;
     flattened[key] = flattenYahoo(value);
   }
-  return flattened;
+  return liftNumericWrapper(flattened);
+}
+
+function mergeInto(target: Record<string, unknown>, part: unknown) {
+  if (isRecord(part)) {
+    Object.assign(target, part);
+    return;
+  }
+  if (!Array.isArray(part)) return;
+  for (const item of part) {
+    if (isRecord(item)) Object.assign(target, item);
+  }
+}
+
+function liftNumericWrapper(record: Record<string, unknown>) {
+  const numeric = Object.keys(record).filter((key) => /^\d+$/.test(key));
+  const named = Object.keys(record).filter((key) => !/^\d+$/.test(key));
+  if (numeric.length !== 1 || named.length === 0) return record;
+  const key = numeric[0];
+  const inner = key == null ? undefined : record[key];
+  if (!key || !isRecord(inner)) return record;
+  delete record[key];
+  for (const [innerKey, value] of Object.entries(inner)) {
+    if (!(innerKey in record)) record[innerKey] = value;
+  }
+  return record;
 }
 
 function isNumericCollection(node: Record<string, unknown>): boolean {

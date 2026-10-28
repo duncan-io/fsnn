@@ -229,6 +229,86 @@ describe("flattenYahoo", () => {
     expect(row?.seasonStats).toEqual([{ statId: 4, value: "1200" }]);
   });
 
+  test("reads a scoreboard when the team tuple contains empty arrays", () => {
+    const rows = extractMatchups(
+      flattenYahoo({
+        fantasy_content: {
+          league: [
+            { league_key: "461.l.1000", name: "Gridiron", num_teams: 2 },
+            {
+              scoreboard: {
+                "0": {
+                  week: "1",
+                  matchups: {
+                    "0": {
+                      matchup: {
+                        "0": {
+                          teams: {
+                            "0": {
+                              team: [
+                                [
+                                  { team_key: "461.l.1000.t.1" },
+                                  { team_id: "1" },
+                                  { name: "Home" },
+                                  [],
+                                  { url: "https://example.test/home" },
+                                ],
+                                {
+                                  team_points: { total: "120.5" },
+                                  team_projected_points: { total: "110.0" },
+                                },
+                              ],
+                            },
+                            "1": {
+                              team: [
+                                [
+                                  { team_key: "461.l.1000.t.2" },
+                                  { team_id: "2" },
+                                  { name: "Away" },
+                                  [],
+                                ],
+                                {
+                                  team_points: { total: "98.0" },
+                                  team_projected_points: { total: "105.0" },
+                                },
+                              ],
+                            },
+                            count: 2,
+                          },
+                        },
+                        week: "1",
+                        status: "postevent",
+                        winner_team_key: "461.l.1000.t.1",
+                      },
+                    },
+                    count: 1,
+                  },
+                },
+                week: "1",
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(rows).toEqual([
+      expect.objectContaining({
+        teamKey: "461.l.1000.t.1",
+        opponentTeamKey: "461.l.1000.t.2",
+        points: "120.5",
+        status: "postevent",
+        week: 1,
+        isWinner: true,
+      }),
+      expect.objectContaining({
+        teamKey: "461.l.1000.t.2",
+        opponentTeamKey: "461.l.1000.t.1",
+        points: "98.0",
+        isWinner: false,
+      }),
+    ]);
+  });
+
   test("reads user leagues, matchups, draft picks, and transactions", () => {
     const leagues = extractLeagues(
       flattenYahoo({
